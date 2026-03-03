@@ -1,0 +1,28 @@
+[project]
+name = "ras-chunker-indexer"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "psycopg[binary]>=3.1",
+    "pgvector>=0.3",
+    "httpx",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "click",
+    "rich",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+cloud = ["boto3>=1.34"]
+
+[project.scripts]
+ras-chunker = "ras_chunker.cli:cli"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ras_chunker"]

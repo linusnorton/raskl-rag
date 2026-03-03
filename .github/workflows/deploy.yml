@@ -1,0 +1,131 @@
+name: Deploy
+
+on:
+  push:
+    branches: [master]
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        run: uv sync --all-packages
+
+      - name: Run chunker tests
+        run: uv run --package ras-chunker-indexer pytest apps/chunker_indexer/tests/ -v
+
+  build-chat:
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set image metadata
+        id: meta
+        run: echo "sha=${GITHUB_SHA::8}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push chat image
+        run: |
+          IMAGE="${{ steps.ecr-login.outputs.registry }}/raskl-chat:${{ steps.meta.outputs.sha }}"
+          docker build -f docker/chat/Dockerfile -t "$IMAGE" .
+          docker push "$IMAGE"
+
+  build-docproc:
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set image metadata
+        id: meta
+        run: echo "sha=${GITHUB_SHA::8}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push docproc image
+        run: |
+          IMAGE="${{ steps.ecr-login.outputs.registry }}/raskl-docproc:${{ steps.meta.outputs.sha }}"
+          docker build -f docker/docproc/Dockerfile -t "$IMAGE" .
+          docker push "$IMAGE"
+
+  deploy:
+    needs: [build-chat, build-docproc]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        working-directory: infra
+        run: terraform init
+
+      - name: Terraform Plan
+        working-directory: infra
+        run: |
+          terraform plan \
+            -var="chat_image_tag=${{ needs.build-chat.outputs.image_tag }}" \
+            -var="docproc_image_tag=${{ needs.build-docproc.outputs.image_tag }}" \
+            -var="neon_api_key=${{ secrets.NEON_API_KEY }}" \
+            -var="upload_password_hash=${{ secrets.UPLOAD_PASSWORD_HASH }}" \
+            -out=tfplan
+
+      - name: Terraform Apply
+        working-directory: infra
+        run: terraform apply -auto-approve tfplan
+
+      - name: Update Lambda images
+        run: |
+          # Update chat Lambda to new image
+          CHAT_REPO=$(aws ecr describe-repositories --repository-names raskl-chat --query 'repositories[0].repositoryUri' --output text)
+          aws lambda update-function-code \
+            --function-name raskl-chat \
+            --image-uri "${CHAT_REPO}:${{ needs.build-chat.outputs.image_tag }}"
+
+          # Update docproc Lambda to new image
+          DOCPROC_REPO=$(aws ecr describe-repositories --repository-names raskl-docproc --query 'repositories[0].repositoryUri' --output text)
+          aws lambda update-function-code \
+            --function-name raskl-docproc \
+            --image-uri "${DOCPROC_REPO}:${{ needs.build-docproc.outputs.image_tag }}"

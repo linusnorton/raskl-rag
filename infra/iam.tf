@@ -1,0 +1,166 @@
+# --- IAM roles and policies for Lambda functions ---
+
+# Shared Lambda execution role
+resource "aws_iam_role" "lambda_exec" {
+  name = "${local.prefix}-lambda-exec"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "lambda.amazonaws.com"
+      }
+    }]
+  })
+}
+
+# CloudWatch Logs
+resource "aws_iam_role_policy_attachment" "lambda_logs" {
+  role       = aws_iam_role.lambda_exec.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+# Bedrock invoke access
+resource "aws_iam_role_policy" "lambda_bedrock" {
+  name = "${local.prefix}-bedrock"
+  role = aws_iam_role.lambda_exec.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "bedrock:InvokeModel",
+          "bedrock:InvokeModelWithResponseStream",
+        ]
+        Resource = "arn:aws:bedrock:${local.region}::foundation-model/*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "bedrock:Rerank",
+        ]
+        Resource = "*"
+      },
+    ]
+  })
+}
+
+# S3 access (read/write docs bucket)
+resource "aws_iam_role_policy" "lambda_s3" {
+  name = "${local.prefix}-s3"
+  role = aws_iam_role.lambda_exec.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:ListBucket",
+      ]
+      Resource = [
+        aws_s3_bucket.docs.arn,
+        "${aws_s3_bucket.docs.arn}/*",
+      ]
+    }]
+  })
+}
+
+# --- GitHub Actions OIDC ---
+
+data "aws_iam_openid_connect_provider" "github" {
+  count = 0 # Set to 1 if OIDC provider doesn't exist yet
+  url   = "https://token.actions.githubusercontent.com"
+}
+
+resource "aws_iam_openid_connect_provider" "github" {
+  url             = "https://token.actions.githubusercontent.com"
+  client_id_list  = ["sts.amazonaws.com"]
+  thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1"]
+}
+
+resource "aws_iam_role" "github_actions" {
+  name = "${local.prefix}-github-actions"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Federated = aws_iam_openid_connect_provider.github.arn
+      }
+      Action = "sts:AssumeRoleWithWebIdentity"
+      Condition = {
+        StringLike = {
+          "token.actions.githubusercontent.com:sub" = "repo:${var.github_org}/${var.github_repo}:*"
+        }
+        StringEquals = {
+          "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
+        }
+      }
+    }]
+  })
+}
+
+# GitHub Actions permissions: ECR, Lambda, S3, Terraform state
+resource "aws_iam_role_policy" "github_actions" {
+  name = "${local.prefix}-github-actions"
+  role = aws_iam_role.github_actions.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ecr:GetAuthorizationToken",
+          "ecr:BatchCheckLayerAvailability",
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:BatchGetImage",
+          "ecr:PutImage",
+          "ecr:InitiateLayerUpload",
+          "ecr:UploadLayerPart",
+          "ecr:CompleteLayerUpload",
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "lambda:*",
+        ]
+        Resource = "arn:aws:lambda:${local.region}:${local.account_id}:function:${local.prefix}-*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:*",
+        ]
+        Resource = [
+          "arn:aws:s3:::raskl-terraform-state",
+          "arn:aws:s3:::raskl-terraform-state/*",
+          aws_s3_bucket.docs.arn,
+          "${aws_s3_bucket.docs.arn}/*",
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "iam:GetRole",
+          "iam:PassRole",
+        ]
+        Resource = aws_iam_role.lambda_exec.arn
+      },
+    ]
+  })
+}
+
+output "github_actions_role_arn" {
+  description = "ARN for GitHub Actions OIDC role"
+  value       = aws_iam_role.github_actions.arn
+}

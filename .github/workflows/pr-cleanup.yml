@@ -1,0 +1,38 @@
+name: PR Cleanup
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Delete preview Lambda
+        run: |
+          FUNC_NAME="raskl-chat-pr-${{ github.event.pull_request.number }}"
+
+          # Check if the function exists
+          if aws lambda get-function --function-name "$FUNC_NAME" 2>/dev/null; then
+            # Delete Function URL config first
+            aws lambda delete-function-url-config --function-name "$FUNC_NAME" 2>/dev/null || true
+
+            # Delete the Lambda function
+            aws lambda delete-function --function-name "$FUNC_NAME"
+            echo "Deleted preview Lambda: $FUNC_NAME"
+          else
+            echo "Preview Lambda $FUNC_NAME does not exist, skipping cleanup"
+          fi

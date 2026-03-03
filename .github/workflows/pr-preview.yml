@@ -1,0 +1,130 @@
+name: PR Preview
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  deploy-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push preview image
+        id: build
+        run: |
+          TAG="pr-${{ github.event.pull_request.number }}"
+          IMAGE="${{ steps.ecr-login.outputs.registry }}/raskl-chat:${TAG}"
+          docker build -f docker/chat/Dockerfile -t "$IMAGE" .
+          docker push "$IMAGE"
+          echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy preview Lambda
+        id: deploy
+        run: |
+          FUNC_NAME="raskl-chat-pr-${{ github.event.pull_request.number }}"
+          IMAGE="${{ steps.build.outputs.image }}"
+
+          # Get prod Lambda config for reference
+          PROD_CONFIG=$(aws lambda get-function-configuration --function-name raskl-chat 2>/dev/null || echo "")
+
+          if [ -z "$PROD_CONFIG" ]; then
+            echo "::error::Production Lambda raskl-chat not found. Deploy to master first."
+            exit 1
+          fi
+
+          ROLE=$(echo "$PROD_CONFIG" | jq -r '.Role')
+          ENV_VARS=$(echo "$PROD_CONFIG" | jq '.Environment')
+
+          # Check if preview Lambda exists
+          EXISTS=$(aws lambda get-function --function-name "$FUNC_NAME" 2>/dev/null && echo "yes" || echo "no")
+
+          if [ "$EXISTS" = "yes" ]; then
+            # Update existing preview
+            aws lambda update-function-code \
+              --function-name "$FUNC_NAME" \
+              --image-uri "$IMAGE"
+          else
+            # Create new preview Lambda
+            aws lambda create-function \
+              --function-name "$FUNC_NAME" \
+              --role "$ROLE" \
+              --package-type Image \
+              --code "ImageUri=${IMAGE}" \
+              --timeout 300 \
+              --memory-size 2048 \
+              --environment "$ENV_VARS"
+
+            # Wait for function to be active
+            aws lambda wait function-active-v2 --function-name "$FUNC_NAME"
+
+            # Create Function URL
+            aws lambda create-function-url-config \
+              --function-name "$FUNC_NAME" \
+              --auth-type NONE \
+              --invoke-mode RESPONSE_STREAM
+
+            # Allow public access
+            aws lambda add-permission \
+              --function-name "$FUNC_NAME" \
+              --statement-id FunctionURLAllowPublicAccess \
+              --action lambda:InvokeFunctionUrl \
+              --principal "*" \
+              --function-url-auth-type NONE
+          fi
+
+          # Get the Function URL
+          URL=$(aws lambda get-function-url-config --function-name "$FUNC_NAME" --query 'FunctionUrl' --output text)
+          echo "url=${URL}" >> "$GITHUB_OUTPUT"
+
+      - name: Comment preview URL on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const url = '${{ steps.deploy.outputs.url }}';
+            const body = `### Preview deployed\n\nChat UI: ${url}\n\n_Updated at ${new Date().toISOString()}_`;
+
+            // Find existing preview comment
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.data.find(c =>
+              c.user.type === 'Bot' && c.body.includes('### Preview deployed')
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }

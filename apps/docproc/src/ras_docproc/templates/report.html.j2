@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DocProc Report: {{ doc_id }}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, -apple-system, sans-serif; background: #1a1a2e; color: #eee; }
+  .header { padding: 20px; background: #16213e; border-bottom: 2px solid #0f3460; }
+  .header h1 { font-size: 1.4em; color: #e94560; }
+  .header p { color: #aaa; margin-top: 4px; }
+  .legend { padding: 10px 20px; background: #16213e; display: flex; gap: 16px; flex-wrap: wrap; border-bottom: 1px solid #333; }
+  .legend-item { display: flex; align-items: center; gap: 4px; font-size: 0.85em; }
+  .legend-swatch { width: 14px; height: 14px; border-radius: 2px; display: inline-block; }
+  .page-section { padding: 20px; border-bottom: 1px solid #333; }
+  .page-title { font-size: 1.1em; margin-bottom: 10px; color: #e94560; }
+  .page-meta { font-size: 0.8em; color: #888; margin-bottom: 10px; }
+  .page-content { display: flex; gap: 20px; }
+  .page-image-container { position: relative; flex-shrink: 0; }
+  .page-image-container img { display: block; max-width: 600px; height: auto; }
+  .page-image-container svg { position: absolute; top: 0; left: 0; pointer-events: none; }
+  .page-image-container svg rect { opacity: 0.25; }
+  .page-image-container svg rect:hover { opacity: 0.5; }
+  .page-image-container svg line { stroke: #f97316; stroke-width: 1; stroke-dasharray: 6 3; }
+  .page-image-container svg rect.fig-rect { fill: none; stroke: #a855f7; stroke-width: 2; stroke-dasharray: 4 2; opacity: 0.8; }
+  .side-panel { flex: 1; max-height: 800px; overflow-y: auto; }
+  .block-entry { padding: 8px; margin-bottom: 6px; background: #16213e; border-radius: 4px; border-left: 3px solid #555; font-size: 0.82em; }
+  .block-entry .block-meta { color: #888; font-size: 0.9em; margin-bottom: 2px; }
+  .block-entry .block-text { color: #ccc; white-space: pre-wrap; word-break: break-word; max-height: 100px; overflow-y: auto; }
+  .rotation-badge { display: inline-block; background: #e94560; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; margin-left: 10px; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>DocProc Report</h1>
+  <p>{{ source_filename }} &mdash; {{ doc_id }}</p>
+</div>
+<div class="legend">
+  {% for type_name, color in block_type_colors.items() %}
+  <div class="legend-item">
+    <span class="legend-swatch" style="background:{{ color }}"></span>
+    {{ type_name }}
+  </div>
+  {% endfor %}
+</div>
+
+{% for page in pages %}
+<div class="page-section">
+  <div class="page-title">
+    Page {{ page.page_num }}
+    {% if page.has_vertical_text %}
+    <span class="rotation-badge">Rotation: {{ page.suggested_rotation }}&deg; (vertical {{ "%.0f"|format(page.vertical_text_ratio * 100) }}%)</span>
+    {% endif %}
+  </div>
+  <div class="page-content">
+    <div class="page-image-container">
+      <img src="data:image/png;base64,{{ page.img_b64 }}" width="{{ page.width }}" height="{{ page.height }}" style="max-width:600px;height:auto;">
+      {% set scale = 600 / page.width if page.width > 600 else 1 %}
+      <svg width="{{ (page.width * scale)|int }}" height="{{ (page.height * scale)|int }}" viewBox="0 0 {{ page.width }} {{ page.height }}">
+        <!-- Footnote zone line -->
+        <line x1="0" y1="{{ page.fn_zone_y }}" x2="{{ page.width }}" y2="{{ page.fn_zone_y }}" />
+        <!-- Block rectangles -->
+        {% for r in page.svg_rects %}
+        <rect x="{{ r.x }}" y="{{ r.y }}" width="{{ r.w }}" height="{{ r.h }}" fill="{{ r.color }}" />
+        {% endfor %}
+        <!-- Figure rectangles -->
+        {% for f in page.fig_rects %}
+        <rect class="fig-rect" x="{{ f.x }}" y="{{ f.y }}" width="{{ f.w }}" height="{{ f.h }}" />
+        {% endfor %}
+      </svg>
+    </div>
+    <div class="side-panel">
+      {% for block in page.blocks %}
+      <div class="block-entry" style="border-left-color:{{ block_type_colors.get(block.block_type, '#555') }}">
+        <div class="block-meta">
+          <strong>{{ block.block_type }}</strong> | {{ block.block_id[:12] }}
+          {% if block.lang %} | {{ block.lang }}{% if block.lang_confidence %} ({{ "%.2f"|format(block.lang_confidence) }}){% endif %}{% endif %}
+        </div>
+        <div class="block-text">{{ block.text_clean or block.text_raw }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endfor %}
+</body>
+</html>

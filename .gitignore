@@ -1,0 +1,21 @@
+docs/
+data/
+reports/
+*.pyc
+__pycache__/
+.venv/
+*.egg-info/
+dist/
+build/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+uv.lock
+models/
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+infra/.build/
+infra/terraform.tfvars

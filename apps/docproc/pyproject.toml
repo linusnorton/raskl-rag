@@ -1,0 +1,30 @@
+[project]
+name = "ras-docproc"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "docling",
+    "pymupdf",
+    "pillow",
+    "lingua-language-detector",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "click",
+    "rich",
+    "tqdm",
+    "jinja2",
+    "httpx",
+]
+
+[project.scripts]
+ras-docproc = "ras_docproc.cli:cli"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ras_docproc"]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-tmp-files"]

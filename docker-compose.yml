@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: raskl
+      POSTGRES_PASSWORD: raskl
+      POSTGRES_DB: raskl_rag
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-light.sql:ro
+
+volumes:
+  pgdata:
