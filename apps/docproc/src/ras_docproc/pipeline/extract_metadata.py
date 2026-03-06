@@ -38,7 +38,7 @@ MUSE_CITATION_RE = re.compile(
 )
 
 # Known-bad PDF metadata titles set by hosting platforms
-BAD_TITLES = {"PROJECT MUSE", "JSTOR", "Untitled"}
+BAD_TITLES = {"PROJECT MUSE", "JSTOR", "Untitled", "Layout 1"}
 
 # Known platform headings to skip in title heuristic
 PLATFORM_HEADINGS = {"PROJECT MUSE", "JSTOR"}
@@ -70,7 +70,8 @@ def extract_metadata(
     # 1. Apply PDF-level metadata as defaults (skip known-bad platform titles)
     if pdf_metadata.get("title") and not document.title:
         candidate = pdf_metadata["title"].strip()
-        if candidate.upper() not in {t.upper() for t in BAD_TITLES}:
+        candidate_normalized = re.sub(r"[^\w\s]", "", candidate).strip().upper()
+        if candidate_normalized not in {re.sub(r"[^\w\s]", "", t).strip().upper() for t in BAD_TITLES}:
             document.title = candidate
     if pdf_metadata.get("author") and not document.author:
         document.author = pdf_metadata["author"].strip()
@@ -129,6 +130,11 @@ def extract_metadata(
                 document.issue = muse_match.group(3)
             if muse_match.group(4) and not document.page_range_label:
                 document.page_range_label = muse_match.group(4).replace(" ", "")
+            # Extract year from the full MUSE citation line (e.g. "June 2012, No. 300")
+            if not document.year:
+                year_m = YEAR_RE.search(muse_match.group(0))
+                if year_m:
+                    document.year = int(year_m.group(1))
             # Build journal_ref
             if not document.journal_ref and document.publication:
                 parts = [document.publication]
@@ -181,7 +187,8 @@ def extract_metadata(
         if headings:
             for h in headings:
                 text = (h.text_clean or h.text_raw).strip()
-                if text.upper() in {p.upper() for p in PLATFORM_HEADINGS}:
+                text_normalized = re.sub(r"[^\w\s]", "", text).strip().upper()
+                if text_normalized in {p.upper() for p in PLATFORM_HEADINGS}:
                     first_is_platform = True
                     continue
                 if len(text) > 10:
@@ -212,7 +219,13 @@ def extract_metadata(
                     document.title = _clean_title(text[:200])
                     break
 
-    # Year fallback: search cover text
+    # Year fallback 1: extract from filename pattern "Author (YEAR) JMBRAS..."
+    if not document.year:
+        fn_year_m = re.search(r"\((\d{4})\)", document.source_filename or "")
+        if fn_year_m:
+            document.year = int(fn_year_m.group(1))
+
+    # Year fallback 2: search cover text (risky — may find historical dates)
     if not document.year:
         year_m = YEAR_RE.search(cover_text)
         if year_m:

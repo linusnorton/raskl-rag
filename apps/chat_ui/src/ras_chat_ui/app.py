@@ -84,6 +84,8 @@ def _format_citations(chunks: list[RetrievedChunk], response_text: str = "", ind
 
     if not lines:
         return ""
+    # Sort by display label so sources appear in [1], [2], [3] order
+    lines.sort(key=lambda l: int(re.match(r'\[(\d+)\]', l).group(1)))
     return "\n\n---\n**Sources:**\n" + "\n".join(lines)
 
 
