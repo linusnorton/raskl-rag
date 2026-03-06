@@ -62,6 +62,21 @@ resource "aws_iam_role_policy" "lambda_bedrock" {
   })
 }
 
+# SES send access (diff notification emails)
+resource "aws_iam_role_policy" "lambda_ses" {
+  name = "${local.prefix}-ses"
+  role = aws_iam_role.lambda_exec.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["ses:SendEmail", "ses:SendRawEmail"]
+      Resource = "*"
+    }]
+  })
+}
+
 # S3 access (read/write docs bucket)
 resource "aws_iam_role_policy" "lambda_s3" {
   name = "${local.prefix}-s3"

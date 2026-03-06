@@ -83,8 +83,36 @@ jobs:
           docker build -f docker/docproc/Dockerfile -t "$IMAGE" .
           docker push "$IMAGE"
 
+  build-chunker:
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set image metadata
+        id: meta
+        run: echo "sha=${GITHUB_SHA::8}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push chunker image
+        run: |
+          IMAGE="${{ steps.ecr-login.outputs.registry }}/raskl-chunker:${{ steps.meta.outputs.sha }}"
+          docker build -f docker/chunker/Dockerfile -t "$IMAGE" .
+          docker push "$IMAGE"
+
   deploy:
-    needs: [build-chat, build-docproc]
+    needs: [build-chat, build-docproc, build-chunker]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -116,6 +144,7 @@ jobs:
           terraform plan \
             -var="chat_image_tag=${{ needs.build-chat.outputs.image_tag }}" \
             -var="docproc_image_tag=${{ needs.build-docproc.outputs.image_tag }}" \
+            -var="chunker_image_tag=${{ needs.build-chunker.outputs.image_tag }}" \
             -var="neon_api_key=${{ secrets.NEON_API_KEY }}" \
             -var="upload_password_hash=${{ secrets.UPLOAD_PASSWORD_HASH }}" \
             -out=tfplan
@@ -137,3 +166,9 @@ jobs:
           aws lambda update-function-code \
             --function-name raskl-docproc \
             --image-uri "${DOCPROC_REPO}:${{ needs.build-docproc.outputs.image_tag }}"
+
+          # Update chunker Lambda to new image
+          CHUNKER_REPO=$(aws ecr describe-repositories --repository-names raskl-chunker --query 'repositories[0].repositoryUri' --output text)
+          aws lambda update-function-code \
+            --function-name raskl-chunker \
+            --image-uri "${CHUNKER_REPO}:${{ needs.build-chunker.outputs.image_tag }}"

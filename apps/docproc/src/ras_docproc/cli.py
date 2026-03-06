@@ -47,6 +47,7 @@ def _run_pipeline(pdf_path: Path, out_dir: Path, max_pages: int | None, page_ran
     from ras_docproc.pipeline.export_jsonl import export_all
     from ras_docproc.pipeline.extract_deepseek import extract_with_deepseek
     from ras_docproc.pipeline.extract_docling import extract_with_docling
+    from ras_docproc.pipeline.extract_qwen3vl import extract_with_qwen3vl
     from ras_docproc.pipeline.extract_metadata import extract_metadata
     from ras_docproc.pipeline.extract_mupdf import extract_pdf_metadata, extract_with_mupdf
     from ras_docproc.pipeline.inventory import run_inventory
@@ -68,7 +69,8 @@ def _run_pipeline(pdf_path: Path, out_dir: Path, max_pages: int | None, page_ran
         extraction_backend=backend,
     )
 
-    extract_label = "Extract (DeepSeek)" if backend == "deepseek" else "Extract (Docling)"
+    extract_labels = {"deepseek": "Extract (DeepSeek)", "qwen3vl": "Extract (Qwen3 VL)", "docling": "Extract (Docling)"}
+    extract_label = extract_labels.get(backend, f"Extract ({backend})")
     steps = [
         "Inventory",
         extract_label,
@@ -96,10 +98,13 @@ def _run_pipeline(pdf_path: Path, out_dir: Path, max_pages: int | None, page_ran
     doc_id = document.doc_id
     progress.update(1)
 
-    # Step 2: Text extraction (Docling or DeepSeek)
+    # Step 2: Text extraction (Docling, DeepSeek, or Qwen3 VL)
     if config.extraction_backend == "deepseek":
         progress.set_postfix_str("DeepSeek-OCR")
         blocks_by_page = extract_with_deepseek(config, doc_id)
+    elif config.extraction_backend == "qwen3vl":
+        progress.set_postfix_str("Qwen3 VL")
+        blocks_by_page = extract_with_qwen3vl(config, doc_id)
     else:
         progress.set_postfix_str("Docling")
         blocks_by_page = extract_with_docling(config, doc_id)
@@ -252,7 +257,7 @@ def _run_pipeline(pdf_path: Path, out_dir: Path, max_pages: int | None, page_ran
 @click.option("--max-pages", default=None, type=int, help="Maximum pages to process")
 @click.option("--page-range", default=None, type=str, help="Page range (e.g. '1-10' or '5,10,15')")
 @click.option("--force", is_flag=True, help="Force re-processing even if output exists")
-@click.option("--backend", default=None, type=click.Choice(["docling", "deepseek"]), help="Extraction backend (auto-detects if not set)")
+@click.option("--backend", default=None, type=click.Choice(["docling", "deepseek", "qwen3vl"]), help="Extraction backend (auto-detects if not set)")
 def run(pdf_path: Path, out_dir: Path, max_pages: int | None, page_range: str | None, force: bool, backend: str | None) -> None:
     """Run the full document processing pipeline on a single PDF."""
     doc_id = _run_pipeline(pdf_path, out_dir, max_pages, page_range, force, backend)

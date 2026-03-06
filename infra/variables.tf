@@ -62,6 +62,12 @@ variable "docproc_image_tag" {
   default     = "latest"
 }
 
+variable "chunker_image_tag" {
+  description = "Docker image tag for chunker Lambda"
+  type        = string
+  default     = "latest"
+}
+
 # --- GitHub Actions OIDC ---
 
 variable "github_org" {

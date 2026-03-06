@@ -58,3 +58,32 @@ resource "aws_ecr_lifecycle_policy" "docproc" {
     }]
   })
 }
+
+resource "aws_ecr_repository" "chunker" {
+  name                 = "${local.prefix}-chunker"
+  image_tag_mutability = "MUTABLE"
+  force_delete         = true
+
+  image_scanning_configuration {
+    scan_on_push = false
+  }
+}
+
+resource "aws_ecr_lifecycle_policy" "chunker" {
+  repository = aws_ecr_repository.chunker.name
+
+  policy = jsonencode({
+    rules = [{
+      rulePriority = 1
+      description  = "Keep last 5 untagged images"
+      selection = {
+        tagStatus   = "untagged"
+        countType   = "imageCountMoreThan"
+        countNumber = 5
+      }
+      action = {
+        type = "expire"
+      }
+    }]
+  })
+}

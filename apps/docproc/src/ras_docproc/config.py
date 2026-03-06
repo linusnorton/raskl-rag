@@ -34,11 +34,18 @@ class PipelineConfig(BaseSettings):
     lang_set: list[str] = Field(default=["en", "ms", "zh", "ar"], description="Languages to detect")
 
     # Extraction backend
-    extraction_backend: str = Field(default="docling", description="Extraction backend: 'docling' or 'deepseek'")
+    extraction_backend: str = Field(default="docling", description="Extraction backend: 'docling', 'deepseek', or 'qwen3vl'")
     vllm_base_url: str = Field(default="http://localhost:8000", description="Base URL for vLLM server")
     vllm_model: str = Field(default="deepseek-ai/DeepSeek-OCR", description="Model name for DeepSeek-OCR")
     deepseek_dpi: int = Field(default=200, description="DPI for page rendering when using DeepSeek backend")
     deepseek_max_tokens: int = Field(default=4000, description="Max tokens per page for DeepSeek OCR")
+
+    # Qwen3 VL (Bedrock)
+    bedrock_region: str = Field(default="eu-west-2", description="AWS region for Bedrock API calls")
+    bedrock_ocr_model_id: str = Field(default="qwen.qwen3-vl-235b-a22b", description="Bedrock model ID for Qwen3 VL OCR")
+    qwen3vl_dpi: int = Field(default=300, description="DPI for page rendering when using Qwen3 VL backend")
+    qwen3vl_max_tokens: int = Field(default=4096, description="Max tokens per page for Qwen3 VL OCR")
+    qwen3vl_max_workers: int = Field(default=10, description="Max parallel Bedrock calls for Qwen3 VL")
 
     # OCR (not enabled by default)
     ocr_enabled: bool = False

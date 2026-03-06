@@ -1,4 +1,4 @@
-# --- DocProc Lambda (S3-triggered, Docling + Chunk + Embed + Index) ---
+# --- DocProc Lambda (S3-triggered, Qwen3 VL OCR + Pipeline + Versioned S3 Output) ---
 
 resource "aws_lambda_function" "docproc" {
   function_name = "${local.prefix}-docproc"
@@ -13,15 +13,10 @@ resource "aws_lambda_function" "docproc" {
       # S3
       DOCS_BUCKET = aws_s3_bucket.docs.id
 
-      # Embedding provider
-      CHUNKER_EMBED_PROVIDER         = "bedrock"
-      CHUNKER_BEDROCK_REGION         = var.aws_region
-      CHUNKER_BEDROCK_EMBED_MODEL_ID = var.embed_model_id
-      CHUNKER_EMBED_DIMENSIONS       = tostring(var.embed_dimensions)
-      CHUNKER_EMBED_TASK_PREFIX      = ""
-
-      # Database (Neon)
-      CHUNKER_DATABASE_DSN = local.neon_dsn
+      # Qwen3 VL backend
+      DOCPROC_EXTRACTION_BACKEND  = "qwen3vl"
+      DOCPROC_BEDROCK_REGION      = var.aws_region
+      DOCPROC_BEDROCK_OCR_MODEL_ID = "qwen.qwen3-vl-235b-a22b"
 
       # uv cache (Lambda filesystem is read-only except /tmp)
       UV_CACHE_DIR = "/tmp/uv-cache"

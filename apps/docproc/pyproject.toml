@@ -28,3 +28,4 @@ packages = ["src/ras_docproc"]
 
 [project.optional-dependencies]
 dev = ["pytest", "pytest-tmp-files"]
+cloud = ["boto3>=1.34"]

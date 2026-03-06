@@ -34,5 +34,12 @@ resource "aws_s3_bucket_notification" "docproc_trigger" {
     filter_suffix       = ".pdf"
   }
 
-  depends_on = [aws_lambda_permission.s3_invoke_docproc]
+  lambda_function {
+    lambda_function_arn = aws_lambda_function.chunker.arn
+    events              = ["s3:ObjectCreated:*"]
+    filter_prefix       = "processed/"
+    filter_suffix       = "documents.jsonl"
+  }
+
+  depends_on = [aws_lambda_permission.s3_invoke_docproc, aws_lambda_permission.s3_invoke_chunker]
 }
