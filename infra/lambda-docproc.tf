@@ -6,7 +6,7 @@ resource "aws_lambda_function" "docproc" {
   package_type  = "Image"
   image_uri     = "${aws_ecr_repository.docproc.repository_url}:${var.docproc_image_tag}"
   timeout       = 900
-  memory_size   = 8192
+  memory_size   = 3008
 
   environment {
     variables = {
@@ -14,14 +14,17 @@ resource "aws_lambda_function" "docproc" {
       DOCS_BUCKET = aws_s3_bucket.docs.id
 
       # Embedding provider
-      CHUNKER_EMBED_PROVIDER        = "bedrock"
-      CHUNKER_BEDROCK_REGION        = var.aws_region
+      CHUNKER_EMBED_PROVIDER         = "bedrock"
+      CHUNKER_BEDROCK_REGION         = var.aws_region
       CHUNKER_BEDROCK_EMBED_MODEL_ID = var.embed_model_id
-      CHUNKER_EMBED_DIMENSIONS      = tostring(var.embed_dimensions)
-      CHUNKER_EMBED_TASK_PREFIX     = "search_document: "
+      CHUNKER_EMBED_DIMENSIONS       = tostring(var.embed_dimensions)
+      CHUNKER_EMBED_TASK_PREFIX      = ""
 
       # Database (Neon)
       CHUNKER_DATABASE_DSN = local.neon_dsn
+
+      # uv cache (Lambda filesystem is read-only except /tmp)
+      UV_CACHE_DIR = "/tmp/uv-cache"
     }
   }
 

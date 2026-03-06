@@ -106,6 +106,53 @@ uv run ras-vllm-launcher download --role all-light
 
 ---
 
+### Cloud stack — AWS Bedrock + Neon
+
+No local GPU needed. All model inference runs on AWS Bedrock; the database is Neon (serverless
+PostgreSQL). This is the stack used by the Lambda deployment, but can also be run locally for
+development/testing.
+
+**Step 1 — Process PDFs** (same as local stacks above)
+
+**Step 2 — Embed and index into Neon**
+
+If you have an existing local database (from the heavy or light stack), migrate chunks to Neon
+with re-embedding:
+
+```bash
+# Dry run
+uv run python scripts/migrate_to_neon.py --dry-run
+
+# Full migration (re-embeds with Bedrock Titan Embed v2)
+AWS_PROFILE=linusnorton uv run python scripts/migrate_to_neon.py \
+  --neon-dsn "postgresql://...@...neon.tech/raskl_rag?sslmode=require"
+```
+
+**Step 3 — Run chat UI locally against Bedrock + Neon**
+
+```bash
+CHAT_LLM_PROVIDER=bedrock CHAT_EMBED_PROVIDER=bedrock CHAT_RERANK_PROVIDER=bedrock \
+CHAT_DATABASE_DSN="postgresql://...@...neon.tech/raskl_rag?sslmode=require" \
+CHAT_EMBED_TASK_PREFIX="" CHAT_LLM_THINKING_BUDGET=2048 \
+AWS_PROFILE=linusnorton uv run ras-chat-ui
+```
+
+See [`DEPLOYMENT.md`](DEPLOYMENT.md) for the full serverless Lambda deployment.
+
+---
+
+## Diagnostic scripts
+
+```bash
+# Diagnose RAG pipeline (embedding → retrieval → reranking → LLM) step by step
+uv run python scripts/diagnose_rag.py --query "What dates did Swettenham go to Singapore?"
+
+# Migrate local DB chunks to Neon with Bedrock re-embedding
+uv run python scripts/migrate_to_neon.py --dry-run
+```
+
+---
+
 ## HTML debug reports
 
 After running docproc, inspect extraction results with an interactive HTML report:

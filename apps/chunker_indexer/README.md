@@ -208,7 +208,7 @@ applied), but display code must use `start_page` directly without adding the off
 
 **What we chose:** An `EmbedProvider` abstract class with two implementations:
 - `VLLMEmbedProvider` — calls a local vLLM server's OpenAI-compatible embeddings endpoint
-- `BedrockEmbedProvider` — calls AWS Bedrock (Cohere Embed Multilingual v3) via boto3
+- `BedrockEmbedProvider` — calls AWS Bedrock (Amazon Titan Embed Text v2 or Cohere Embed) via boto3
 
 Selected via `CHUNKER_EMBED_PROVIDER="vllm"` (default) or `"bedrock"`.
 

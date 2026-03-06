@@ -1,7 +1,7 @@
 variable "aws_region" {
   description = "AWS region for all resources"
   type        = string
-  default     = "us-east-1"
+  default     = "eu-west-2"
 }
 
 variable "neon_api_key" {
@@ -19,21 +19,27 @@ variable "upload_password_hash" {
 # --- Bedrock Model IDs (swap models without code changes) ---
 
 variable "chat_model_id" {
-  description = "Bedrock model ID for chat LLM"
+  description = "Bedrock model ID for chat LLM (EU cross-region inference profile)"
   type        = string
-  default     = "qwen.qwen3-32b-v1:0"
+  default     = "qwen.qwen3-235b-a22b-2507-v1:0"
 }
 
 variable "embed_model_id" {
   description = "Bedrock model ID for embeddings"
   type        = string
-  default     = "cohere.embed-multilingual-v3"
+  default     = "amazon.titan-embed-text-v2:0"
 }
 
 variable "rerank_model_id" {
   description = "Bedrock model ID for reranking"
   type        = string
-  default     = "cohere.rerank-v3-5:0"
+  default     = "amazon.rerank-v1:0"
+}
+
+variable "rerank_region" {
+  description = "AWS region for reranking (Cohere Rerank may not be in all regions)"
+  type        = string
+  default     = "eu-central-1"
 }
 
 variable "embed_dimensions" {

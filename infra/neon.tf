@@ -1,14 +1,9 @@
 # --- Neon Serverless PostgreSQL (free tier, scale-to-zero) ---
 
 resource "neon_project" "main" {
-  name      = "raskl-rag"
-  region_id = "aws-us-east-1"
-
-  default_endpoint_settings {
-    autoscaling_limit_min_cu = 0.25
-    autoscaling_limit_max_cu = 0.25
-    suspend_timeout_seconds  = 300 # suspend after 5 min idle
-  }
+  name                          = "raskl-rag"
+  region_id                     = "aws-eu-west-2"
+  history_retention_seconds     = 21600
 }
 
 resource "neon_database" "main" {

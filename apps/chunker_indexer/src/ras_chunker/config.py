@@ -31,8 +31,8 @@ class ChunkerConfig(BaseSettings):
     embed_task_prefix: str = "Represent this document passage for retrieval: "
 
     # Bedrock configuration (used when embed_provider = "bedrock")
-    bedrock_region: str = "us-east-1"
-    bedrock_embed_model_id: str = "cohere.embed-multilingual-v3"
+    bedrock_region: str = "eu-west-2"
+    bedrock_embed_model_id: str = "amazon.titan-embed-text-v2:0"
 
     # Database
     db_host: str = "localhost"

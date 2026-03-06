@@ -16,11 +16,19 @@ resource "aws_lambda_function" "chat" {
       CHAT_RERANK_PROVIDER = "bedrock"
 
       # Bedrock model configuration
-      CHAT_BEDROCK_REGION         = var.aws_region
-      CHAT_BEDROCK_CHAT_MODEL_ID  = var.chat_model_id
-      CHAT_BEDROCK_EMBED_MODEL_ID = var.embed_model_id
+      CHAT_BEDROCK_REGION          = var.aws_region
+      CHAT_BEDROCK_CHAT_MODEL_ID   = var.chat_model_id
+      CHAT_BEDROCK_EMBED_MODEL_ID  = var.embed_model_id
+      CHAT_BEDROCK_RERANK_REGION   = var.rerank_region
       CHAT_BEDROCK_RERANK_MODEL_ID = var.rerank_model_id
-      CHAT_EMBED_DIMENSIONS       = tostring(var.embed_dimensions)
+      CHAT_EMBED_DIMENSIONS        = tostring(var.embed_dimensions)
+      CHAT_EMBED_TASK_PREFIX       = ""
+
+      # Extended thinking
+      CHAT_LLM_THINKING_BUDGET = "2048"
+
+      # Reranker domain hint
+      CHAT_RERANK_INSTRUCTION = "Given a user question about historical JMBRAS and Swettenham journal documents, judge whether the document passage is relevant"
 
       # Database (Neon)
       CHAT_DATABASE_DSN = local.neon_dsn
@@ -32,8 +40,13 @@ resource "aws_lambda_function" "chat" {
       CHAT_WEB_SEARCH_ENABLED = "true"
 
       # Lambda Web Adapter
-      AWS_LWA_INVOKE_MODE = "response_stream"
-      PORT                = "7860"
+      AWS_LWA_INVOKE_MODE    = "buffered"
+      AWS_LWA_READINESS_CHECK_PATH = "/"
+      AWS_LWA_INIT_BINARY    = "/opt/extensions/lambda-adapter"
+      PORT                   = "7860"
+
+      # uv cache (Lambda filesystem is read-only except /tmp)
+      UV_CACHE_DIR = "/tmp/uv-cache"
     }
   }
 
@@ -42,8 +55,3 @@ resource "aws_lambda_function" "chat" {
   }
 }
 
-resource "aws_lambda_function_url" "chat" {
-  function_name      = aws_lambda_function.chat.function_name
-  authorization_type = "NONE"
-  invoke_mode        = "RESPONSE_STREAM"
-}

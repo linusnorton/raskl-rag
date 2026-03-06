@@ -21,12 +21,15 @@ def _get_client(region: str):
 
 
 class BedrockRerankProvider(RerankProvider):
-    def __init__(self, region: str, model_id: str):
+    def __init__(self, region: str, model_id: str, query_prefix: str = ""):
         self.region = region
         self.model_id = model_id
+        self.query_prefix = query_prefix
 
     def rerank(self, query: str, documents: list[str], top_k: int) -> list[tuple[int, float]]:
         client = _get_client(self.region)
+        if self.query_prefix:
+            query = f"{self.query_prefix}{query}"
 
         text_sources = [
             {"type": "INLINE", "inlineDocumentSource": {"type": "TEXT", "textDocument": {"text": doc}}}

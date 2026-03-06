@@ -35,13 +35,26 @@ resource "aws_iam_role_policy" "lambda_bedrock" {
         Action = [
           "bedrock:InvokeModel",
           "bedrock:InvokeModelWithResponseStream",
+          "bedrock:Converse",
+          "bedrock:ConverseStream",
         ]
-        Resource = "arn:aws:bedrock:${local.region}::foundation-model/*"
+        Resource = [
+          "arn:aws:bedrock:*::foundation-model/*",
+          "arn:aws:bedrock:${local.region}:${local.account_id}:inference-profile/eu.*",
+        ]
       },
       {
         Effect = "Allow"
         Action = [
           "bedrock:Rerank",
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "aws-marketplace:ViewSubscriptions",
+          "aws-marketplace:Subscribe",
         ]
         Resource = "*"
       },

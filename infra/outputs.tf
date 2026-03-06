@@ -1,11 +1,16 @@
+output "api_url" {
+  description = "API Gateway base URL"
+  value       = aws_apigatewayv2_stage.default.invoke_url
+}
+
 output "chat_url" {
-  description = "Chat UI Function URL"
-  value       = aws_lambda_function_url.chat.function_url
+  description = "Chat UI URL"
+  value       = aws_apigatewayv2_stage.default.invoke_url
 }
 
 output "upload_url" {
-  description = "Upload page Function URL"
-  value       = aws_lambda_function_url.upload.function_url
+  description = "Upload page URL"
+  value       = "${trimsuffix(aws_apigatewayv2_stage.default.invoke_url, "/")}/upload"
 }
 
 output "docproc_function_name" {

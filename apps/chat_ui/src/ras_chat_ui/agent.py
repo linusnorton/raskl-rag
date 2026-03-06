@@ -52,7 +52,8 @@ def _compute_max_tokens(
     """Compute dynamic max_tokens based on remaining context budget."""
     input_tokens = llm.count_tokens(messages, tools=tools)
     available = config.llm_context_window - input_tokens
-    max_tokens = min(config.llm_max_tokens, available - 64)
+    # Reserve space for thinking tokens (they count against max_tokens on Bedrock)
+    max_tokens = min(config.llm_max_tokens + config.llm_thinking_budget, available - 64)
     return max(max_tokens, min(MIN_OUTPUT_TOKENS, available))
 
 
@@ -78,11 +79,14 @@ def run_agent_streaming(
     messages: list[dict] = [system_msg]
     for entry in history:
         content = entry.get("content") or ""
+        # Gradio 6.x may pass content as [{"text": "...", "type": "text"}]
+        if isinstance(content, list):
+            content = "".join(block.get("text", "") for block in content if isinstance(block, dict))
         messages.append({"role": entry["role"], "content": content})
     messages.append({"role": "user", "content": user_message})
 
     # Step 2b: Trim context — drop lowest-relevance chunks until prompt fits
-    budget = config.llm_context_window - MIN_OUTPUT_TOKENS - 64
+    budget = config.llm_context_window - MIN_OUTPUT_TOKENS - config.llm_thinking_budget - 64
     input_tokens = llm.count_tokens(messages, tools=tool_defs)
     while input_tokens > budget and initial_chunks:
         dropped = initial_chunks.pop()  # last chunk = lowest relevance score

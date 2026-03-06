@@ -89,17 +89,19 @@ Both `chat_ui` and `chunker_indexer` use a provider pattern for model inference,
 
 | Provider type | Local backend | Cloud backend |
 |---------------|---------------|---------------|
-| LLM | `vllm` — httpx to vLLM OpenAI-compatible API | `bedrock` — Converse API |
-| Embedding | `sentence-transformers` — SentenceTransformer | `bedrock` — Cohere Embed Multilingual v3 |
-| Reranking | `qwen3` / `cross-encoder` — local models | `bedrock` — Cohere Rerank 3.5 |
+| LLM | `vllm` — httpx to vLLM OpenAI-compatible API | `bedrock` — Converse API (Qwen3-235B) |
+| Embedding | `sentence-transformers` — SentenceTransformer | `bedrock` — Amazon Titan Embed Text v2 (also supports Cohere Embed) |
+| Reranking | `qwen3` / `cross-encoder` — local models | `bedrock` — Amazon Rerank v1 (also supports Cohere Rerank) |
 
 Config fields: `CHAT_LLM_PROVIDER`, `CHAT_EMBED_PROVIDER`, `CHAT_RERANK_PROVIDER`
+
+Bedrock-specific config: `CHAT_LLM_THINKING_BUDGET` (extended thinking tokens, 0=disabled), `CHAT_RERANK_INSTRUCTION` (domain hint prepended to rerank queries)
 
 ### chunker_indexer providers (`apps/chunker_indexer/src/ras_chunker/providers/`)
 
 | Provider type | Local backend | Cloud backend |
 |---------------|---------------|---------------|
-| Embedding | `vllm` — httpx to vLLM embeddings API | `bedrock` — Cohere Embed Multilingual v3 |
+| Embedding | `vllm` — httpx to vLLM embeddings API | `bedrock` — Amazon Titan Embed Text v2 (also supports Cohere Embed) |
 
 Config field: `CHUNKER_EMBED_PROVIDER`
 

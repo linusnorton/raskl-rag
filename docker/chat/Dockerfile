@@ -1,29 +1,38 @@
-FROM public.ecr.aws/lambda/python:3.11
+FROM python:3.11-slim
 
-# Install Lambda Web Adapter
-COPY --from=public.ecr.aws/awsguru/aws-lambda-web-adapter:0.8.4 /lambda-adapter /opt/extensions/lambda-adapter
+# Lambda Web Adapter — bundles the Lambda Runtime Interface Client
+# and proxies Lambda events as HTTP requests to the web app
+COPY --from=public.ecr.aws/awsguru/aws-lambda-adapter:0.8.4 /lambda-adapter /opt/extensions/lambda-adapter
 
-# Install Python dependencies (no torch/sentence-transformers — all inference via Bedrock)
-RUN pip install --no-cache-dir \
-    gradio \
-    httpx \
-    "psycopg[binary]>=3.1" \
-    "pgvector>=0.3" \
-    "pydantic-settings>=2.0" \
-    "duckduckgo-search>=7.0" \
-    "boto3>=1.34"
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# Copy application code
-COPY apps/chat_ui/src/ras_chat_ui ${LAMBDA_TASK_ROOT}/ras_chat_ui
+# Copy workspace files needed for dependency resolution
+WORKDIR /app
+COPY pyproject.toml uv.lock ./
+COPY apps/chat_ui/ apps/chat_ui/
+COPY apps/docproc/pyproject.toml apps/docproc/pyproject.toml
+COPY apps/chunker_indexer/pyproject.toml apps/chunker_indexer/pyproject.toml
+COPY apps/vllm_launcher/pyproject.toml apps/vllm_launcher/pyproject.toml
+
+# Stub out other workspace members so uv resolves without their source
+RUN mkdir -p apps/docproc/src/ras_docproc && touch apps/docproc/src/ras_docproc/__init__.py
+RUN mkdir -p apps/chunker_indexer/src/ras_chunker && touch apps/chunker_indexer/src/ras_chunker/__init__.py
+RUN mkdir -p apps/vllm_launcher/src/ras_vllm_launcher && touch apps/vllm_launcher/src/ras_vllm_launcher/__init__.py
+
+# Install chat_ui with cloud dependencies
+RUN uv sync --package ras-chat-ui --extra cloud --no-dev --frozen
 
 # Lambda Web Adapter config
 ENV PORT=7860
 ENV AWS_LWA_INVOKE_MODE=response_stream
+ENV AWS_LWA_PORT=7860
+ENV UV_CACHE_DIR=/tmp/uv-cache
 
-# Bedrock provider defaults (overridden by Lambda env vars)
+# Bedrock provider defaults
 ENV CHAT_LLM_PROVIDER=bedrock
 ENV CHAT_EMBED_PROVIDER=bedrock
 ENV CHAT_RERANK_PROVIDER=bedrock
 
-# Launch Gradio via the app entry point
-CMD ["ras_chat_ui.app.main"]
+# Start Gradio — Lambda Web Adapter proxies Lambda events to port 7860
+CMD ["/app/.venv/bin/python", "-m", "ras_chat_ui.app"]

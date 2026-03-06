@@ -38,10 +38,14 @@ class ChatConfig(BaseSettings):
     )
 
     # Bedrock configuration (used when provider = "bedrock")
-    bedrock_region: str = "us-east-1"
-    bedrock_chat_model_id: str = "qwen.qwen3-32b-v1:0"
-    bedrock_embed_model_id: str = "cohere.embed-multilingual-v3"
-    bedrock_rerank_model_id: str = "cohere.rerank-v3-5:0"
+    bedrock_region: str = "eu-west-2"
+    bedrock_chat_model_id: str = "qwen.qwen3-235b-a22b-2507-v1:0"
+    bedrock_embed_model_id: str = "amazon.titan-embed-text-v2:0"
+    bedrock_rerank_region: str = "eu-central-1"  # Cohere Rerank not available in all regions
+    bedrock_rerank_model_id: str = "amazon.rerank-v1:0"
+
+    # Extended thinking (Bedrock only, 0 = disabled)
+    llm_thinking_budget: int = 0
 
     # Retrieval
     retrieval_top_k: int = 10

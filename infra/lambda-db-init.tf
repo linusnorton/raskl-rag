@@ -1,9 +1,22 @@
 # --- DB Init Lambda (one-shot: CREATE EXTENSION + DDL on Neon) ---
 
-data "archive_file" "db_init" {
-  type        = "zip"
-  source_dir  = "${path.module}/lambda-db-init"
-  output_path = "${path.module}/.build/db-init.zip"
+# Build the deployment package with psycopg2-binary bundled
+resource "terraform_data" "db_init_package" {
+  triggers_replace = [
+    filesha256("${path.module}/lambda-db-init/handler.py"),
+  ]
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      set -e
+      BUILD_DIR="${path.module}/.build/db-init-pkg"
+      rm -rf "$BUILD_DIR" "${path.module}/.build/db-init.zip"
+      mkdir -p "$BUILD_DIR"
+      pip install --target "$BUILD_DIR" --platform manylinux2014_x86_64 --python-version 3.11 --only-binary=:all: psycopg2-binary -q
+      cp ${path.module}/lambda-db-init/handler.py "$BUILD_DIR/"
+      cd "$BUILD_DIR" && zip -r ../db-init.zip . -q
+    EOT
+  }
 }
 
 resource "aws_lambda_function" "db_init" {
@@ -11,14 +24,10 @@ resource "aws_lambda_function" "db_init" {
   role             = aws_iam_role.lambda_exec.arn
   handler          = "handler.lambda_handler"
   runtime          = "python3.11"
-  filename         = data.archive_file.db_init.output_path
-  source_code_hash = data.archive_file.db_init.output_base64sha256
+  filename         = "${path.module}/.build/db-init.zip"
+  source_code_hash = filebase64sha256("${path.module}/.build/db-init.zip")
   timeout          = 60
   memory_size      = 256
-
-  layers = [
-    "arn:aws:lambda:${local.region}:898466741470:layer:psycopg2-py311:1",
-  ]
 
   environment {
     variables = {
@@ -26,6 +35,8 @@ resource "aws_lambda_function" "db_init" {
       EMBED_DIMENSIONS = tostring(var.embed_dimensions)
     }
   }
+
+  depends_on = [terraform_data.db_init_package]
 }
 
 # Invoke the DB init Lambda once after creation

@@ -89,9 +89,10 @@ def _convert_messages(messages: list[dict]) -> tuple[list[dict], list[dict]]:
 
 
 class BedrockLLMProvider(LLMProvider):
-    def __init__(self, region: str, model_id: str):
+    def __init__(self, region: str, model_id: str, thinking_budget: int = 0):
         self.region = region
         self.model_id = model_id
+        self.thinking_budget = thinking_budget
 
     def count_tokens(self, messages: list[dict], *, tools: list[dict] | None = None) -> int:
         chars = sum(len(json.dumps(m)) for m in messages)
@@ -122,6 +123,10 @@ class BedrockLLMProvider(LLMProvider):
             kwargs["system"] = system_parts
         if tools:
             kwargs["toolConfig"] = {"tools": _openai_tools_to_bedrock(tools)}
+        if self.thinking_budget > 0:
+            kwargs["additionalModelRequestFields"] = {
+                "thinking": {"type": "enabled", "budget_tokens": self.thinking_budget}
+            }
 
         resp = client.converse(**kwargs)
         output = resp["output"]["message"]
@@ -174,6 +179,10 @@ class BedrockLLMProvider(LLMProvider):
         }
         if system_parts:
             kwargs["system"] = system_parts
+        if self.thinking_budget > 0:
+            kwargs["additionalModelRequestFields"] = {
+                "thinking": {"type": "enabled", "budget_tokens": self.thinking_budget}
+            }
 
         resp = client.converse_stream(**kwargs)
 

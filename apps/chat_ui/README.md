@@ -163,9 +163,9 @@ judge whether the model followed the grounding rules correctly.
 
 | Provider | Local backend | Cloud backend |
 |----------|---------------|---------------|
-| LLM | `vllm` — httpx to vLLM OpenAI-compatible API | `bedrock` — AWS Bedrock Converse API |
-| Embedding | `sentence-transformers` — loads model locally | `bedrock` — Cohere Embed Multilingual v3 |
-| Reranker | `qwen3` or `cross-encoder` — local models | `bedrock` — Cohere Rerank v3.5 |
+| LLM | `vllm` — httpx to vLLM OpenAI-compatible API | `bedrock` — AWS Bedrock Converse API (Qwen3-235B) |
+| Embedding | `sentence-transformers` — loads model locally | `bedrock` — Amazon Titan Embed Text v2 |
+| Reranker | `qwen3` or `cross-encoder` — local models | `bedrock` — Amazon Rerank v1 |
 
 Selected via `CHAT_LLM_PROVIDER`, `CHAT_EMBED_PROVIDER`, `CHAT_RERANK_PROVIDER`.
 
@@ -173,6 +173,39 @@ Selected via `CHAT_LLM_PROVIDER`, `CHAT_EMBED_PROVIDER`, `CHAT_RERANK_PROVIDER`.
 adequate hardware. AWS Bedrock requires no local hardware but costs money per request and sends
 data to AWS. The provider pattern means the same application code handles both cases; only
 environment variables change between deployments.
+
+### D7 — Extended thinking for Bedrock LLM
+
+**What we chose:** When using Bedrock, the LLM can be given a thinking token budget via
+`CHAT_LLM_THINKING_BUDGET` (set to 2048 in production). This passes
+`additionalModelRequestFields.thinking` to the Bedrock Converse API, enabling the model to
+reason through dates, facts, and cross-references before producing its answer.
+
+The token budget calculation in `agent.py` reserves space for thinking tokens alongside the
+output tokens, so the context window isn't overflowed.
+
+**Why:** Without thinking mode, Qwen3 on Bedrock would not carefully parse dates and facts from
+context passages. In testing, the model confused "6th October" with dates from adjacent section
+headings, hallucinating "1st November" as an answer. With thinking enabled, the model reasons
+through "the section heading says 3rd September to 6th October... he left for Singapore on the
+5th... arrived 6th October" and gets the correct answer.
+
+### D8 — Reranker domain hint for Bedrock
+
+**What we chose:** The `CHAT_RERANK_INSTRUCTION` config value is prepended to the query before
+sending it to the Bedrock reranker. For example, the query "What dates did Swettenham go to
+Singapore?" becomes "Given a user question about historical JMBRAS and Swettenham journal
+documents, judge whether the document passage is relevant: What dates did Swettenham go to
+Singapore?"
+
+This reuses the same `rerank_instruction` field used by the local Qwen3 reranker (where it's
+passed as a model instruction). For Bedrock rerankers that don't support custom instructions
+(like Cohere Rerank and Amazon Rerank), prepending to the query is the workaround.
+
+**Why:** Without domain context, the reranker treats all queries generically. Adding a hint about
+the document domain helps the reranker prioritise passages from the right context — a passage
+about Singapore from Swettenham's journal should score higher than a generic mention of Singapore
+in an unrelated paper.
 
 ## Configuration
 
@@ -225,10 +258,13 @@ Key environment variables (prefix `CHAT_`):
 
 | Variable | Default | Notes |
 |----------|---------|-------|
-| `CHAT_BEDROCK_REGION` | `us-east-1` | AWS region |
-| `CHAT_BEDROCK_CHAT_MODEL_ID` | `qwen.qwen3-32b-v1:0` | Bedrock LLM model ID |
-| `CHAT_BEDROCK_EMBED_MODEL_ID` | `cohere.embed-multilingual-v3` | Bedrock embedding model |
-| `CHAT_BEDROCK_RERANK_MODEL_ID` | `cohere.rerank-v3-5:0` | Bedrock reranker model |
+| `CHAT_BEDROCK_REGION` | `eu-west-2` | AWS region |
+| `CHAT_BEDROCK_CHAT_MODEL_ID` | `qwen.qwen3-235b-a22b-2507-v1:0` | Bedrock LLM model ID |
+| `CHAT_BEDROCK_EMBED_MODEL_ID` | `amazon.titan-embed-text-v2:0` | Bedrock embedding model |
+| `CHAT_BEDROCK_RERANK_REGION` | `eu-central-1` | AWS region for reranking (may differ) |
+| `CHAT_BEDROCK_RERANK_MODEL_ID` | `amazon.rerank-v1:0` | Bedrock reranker model |
+| `CHAT_LLM_THINKING_BUDGET` | `0` | Extended thinking token budget (0=disabled, 2048 recommended) |
+| `CHAT_RERANK_INSTRUCTION` | _(historical JMBRAS domain hint)_ | Prepended to rerank queries for domain context |
 
 ### Database
 

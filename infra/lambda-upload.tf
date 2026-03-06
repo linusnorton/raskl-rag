@@ -24,7 +24,3 @@ resource "aws_lambda_function" "upload" {
   }
 }
 
-resource "aws_lambda_function_url" "upload" {
-  function_name      = aws_lambda_function.upload.function_name
-  authorization_type = "NONE"
-}
