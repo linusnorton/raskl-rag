@@ -181,6 +181,11 @@ resource "aws_iam_role_policy" "github_actions" {
         Action   = ["execute-api:*", "apigateway:*"]
         Resource = "*"
       },
+      {
+        Effect   = "Allow"
+        Action   = ["ses:*"]
+        Resource = "*"
+      },
     ]
   })
 }

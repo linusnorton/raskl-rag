@@ -130,6 +130,12 @@ jobs:
         working-directory: infra
         run: terraform init
 
+      - name: Import pre-existing resources into Terraform state
+        working-directory: infra
+        run: |
+          # Import ECR repo if it exists but isn't in state yet (first deploy only)
+          terraform import aws_ecr_repository.chunker raskl-chunker 2>/dev/null || true
+
       - name: Build db-init Lambda package
         working-directory: infra
         run: |
