@@ -163,8 +163,8 @@ resource "aws_iam_role_policy" "github_actions" {
       },
       {
         Effect   = "Allow"
-        Action   = "execute-api:*"
-        Resource = "arn:aws:execute-api:${local.region}:${local.account_id}:*"
+        Action   = ["execute-api:*", "apigateway:*"]
+        Resource = "*"
       },
     ]
   })
