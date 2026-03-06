@@ -8,6 +8,7 @@ import os
 import re
 import tempfile
 from pathlib import Path
+from urllib.parse import unquote_plus
 
 import boto3
 
@@ -21,7 +22,7 @@ def lambda_handler(event, context):
     """Process S3 event: download PDF, run docproc with Qwen3 VL, upload versioned JSONL, diff + email."""
     for record in event.get("Records", []):
         bucket = record["s3"]["bucket"]["name"]
-        key = record["s3"]["object"]["key"]
+        key = unquote_plus(record["s3"]["object"]["key"])
 
         if not key.lower().endswith(".pdf"):
             logger.info("Skipping non-PDF: %s", key)
