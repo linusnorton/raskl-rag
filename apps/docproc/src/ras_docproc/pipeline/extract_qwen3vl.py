@@ -76,7 +76,11 @@ def _call_bedrock(
         inferenceConfig={"maxTokens": max_tokens, "temperature": 0.0},
     )
 
-    return response["output"]["message"]["content"][0]["text"]
+    text = response["output"]["message"]["content"][0]["text"]
+    # Strip markdown code fences that Qwen3 VL sometimes wraps around its response
+    text = re.sub(r"^```(?:markdown)?\s*\n?", "", text)
+    text = re.sub(r"\n?```\s*$", "", text)
+    return text
 
 
 def _parse_markdown_to_blocks(

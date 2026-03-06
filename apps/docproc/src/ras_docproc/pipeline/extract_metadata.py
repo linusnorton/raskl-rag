@@ -47,6 +47,14 @@ PLATFORM_HEADINGS = {"PROJECT MUSE", "JSTOR"}
 YEAR_RE = re.compile(r"\b(1[5-9]\d{2}|20[0-2]\d)\b")
 
 
+def _clean_title(t: str) -> str:
+    """Strip markdown formatting artifacts from title text."""
+    t = re.sub(r"\*{1,2}(.+?)\*{1,2}", r"\1", t)  # **bold** / *italic*
+    t = re.sub(r"^```(?:markdown)?\s*", "", t)  # code fence opener
+    t = re.sub(r"```\s*$", "", t)  # code fence closer
+    return t.strip()
+
+
 def extract_metadata(
     document: DocumentRecord,
     blocks_by_page: dict[int, list[TextBlockRecord]],
@@ -177,7 +185,7 @@ def extract_metadata(
                     first_is_platform = True
                     continue
                 if len(text) > 10:
-                    document.title = text
+                    document.title = _clean_title(text)
                     break
         # If the first heading was a platform name (e.g. "PROJECT MUSE"),
         # take the first paragraph after it as the title (not citation/boilerplate)
@@ -192,7 +200,7 @@ def extract_metadata(
                 if text.lower().startswith(("published by", "author", "source:", "stable url")):
                     continue
                 if len(text) > 10:
-                    document.title = text[:200]
+                    document.title = _clean_title(text[:200])
                     break
         # Fallback: first substantial non-boilerplate paragraph
         if not document.title:
@@ -201,7 +209,7 @@ def extract_metadata(
                     continue
                 text = (b.text_clean or b.text_raw).strip()
                 if len(text) > 20:
-                    document.title = text[:200]
+                    document.title = _clean_title(text[:200])
                     break
 
     # Year fallback: search cover text
@@ -209,6 +217,10 @@ def extract_metadata(
         year_m = YEAR_RE.search(cover_text)
         if year_m:
             document.year = int(year_m.group(1))
+
+    # Final cleanup: strip markdown artifacts from title (Qwen3 VL output)
+    if document.title:
+        document.title = _clean_title(document.title)
 
     fields_found = sum(
         1 for f in [document.title, document.author, document.year, document.doi, document.url] if f is not None
