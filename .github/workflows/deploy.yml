@@ -25,7 +25,7 @@ jobs:
         run: uv sync --all-packages
 
       - name: Run chunker tests
-        run: uv run --package ras-chunker-indexer pytest apps/chunker_indexer/tests/ -v
+        run: uv run --package ras-chunker-indexer --extra dev pytest apps/chunker_indexer/tests/ -v
 
   build-chat:
     needs: test
