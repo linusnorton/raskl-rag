@@ -32,6 +32,12 @@ resource "aws_apigatewayv2_route" "upload_post" {
   target    = "integrations/${aws_apigatewayv2_integration.upload.id}"
 }
 
+resource "aws_apigatewayv2_route" "upload_presign" {
+  api_id    = aws_apigatewayv2_api.main.id
+  route_key = "POST /upload/presign"
+  target    = "integrations/${aws_apigatewayv2_integration.upload.id}"
+}
+
 resource "aws_lambda_permission" "apigw_upload" {
   statement_id  = "AllowAPIGatewayInvoke"
   action        = "lambda:InvokeFunction"

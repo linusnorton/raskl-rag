@@ -108,8 +108,48 @@ def _parse_multipart(event):
     return fields, files
 
 
+def _json_response(status, body):
+    return {
+        "statusCode": status,
+        "headers": {"Content-Type": "application/json"},
+        "body": json.dumps(body),
+    }
+
+
+def _handle_presign(event):
+    """POST /upload/presign — return a presigned S3 PUT URL for large files."""
+    try:
+        body = json.loads(event.get("body", "{}"))
+    except (json.JSONDecodeError, TypeError):
+        return _json_response(400, {"error": "Invalid JSON body"})
+
+    password = body.get("password", "")
+    if not _verify_password(password):
+        return _json_response(403, {"error": "Invalid password"})
+
+    filename = body.get("filename", "")
+    if not filename or not filename.lower().endswith(".pdf"):
+        return _json_response(400, {"error": "filename must end with .pdf"})
+
+    safe_name = os.path.basename(filename)
+    s3_key = f"uploads/{safe_name}"
+
+    presigned_url = s3.generate_presigned_url(
+        "put_object",
+        Params={"Bucket": BUCKET, "Key": s3_key, "ContentType": "application/pdf"},
+        ExpiresIn=600,
+    )
+
+    return _json_response(200, {"upload_url": presigned_url, "s3_key": s3_key})
+
+
 def lambda_handler(event, context):
     method = event.get("requestContext", {}).get("http", {}).get("method", "GET")
+    path = event.get("requestContext", {}).get("http", {}).get("path", "/upload")
+
+    # Presigned URL endpoint for large files
+    if path.endswith("/presign") and method == "POST":
+        return _handle_presign(event)
 
     if method == "GET":
         return _html_response(200)
