@@ -48,7 +48,7 @@ class ChatConfig(BaseSettings):
     llm_thinking_budget: int = 0
 
     # Retrieval
-    retrieval_top_k: int = 10
+    retrieval_top_k: int = 15
     retrieval_score_threshold: float = 0.3
 
     # Database

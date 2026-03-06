@@ -55,6 +55,65 @@ def _clean_title(t: str) -> str:
     return t.strip()
 
 
+# Running header pattern: "Title NNN" at end of line where NNN is a page number
+_RUNNING_HEADER_RE = re.compile(r"\b(\d{1,4})\s*$", re.MULTILINE)
+
+
+def _detect_page_offset_from_running_headers(
+    document: DocumentRecord,
+    blocks_by_page: dict[int, list[TextBlockRecord]],
+    pdf_metadata: dict[str, str],
+) -> None:
+    """Detect page_offset by comparing running header page numbers with PDF page numbers.
+
+    Scanned journals often have running headers/footers containing the original page
+    number (e.g., "Swettenham's Perak Journals 1874-1876 109"). By comparing these
+    numbers with the actual PDF page, we can compute the offset.
+
+    Only samples from the last half of the document to avoid early pages that may have
+    different numbering (roman numerals, unnumbered plates, etc.).
+    """
+    from collections import Counter
+
+    total_pages = int(pdf_metadata.get("page_count", 0))
+    if total_pages == 0:
+        return
+
+    all_pages = sorted(blocks_by_page.keys())
+    # Sample from the second half of the document for stable offset
+    sample_start = all_pages[len(all_pages) // 2]
+
+    offset_samples: list[int] = []
+    for page_num in all_pages:
+        if page_num < sample_start:
+            continue
+        for block in blocks_by_page[page_num]:
+            text = block.text_clean or block.text_raw
+            for m in _RUNNING_HEADER_RE.finditer(text):
+                candidate = int(m.group(1))
+                # Plausible journal page: positive, less than 2x total pages,
+                # and different from the PDF page number
+                if not (1 <= candidate <= total_pages * 2):
+                    continue
+                if candidate == page_num:
+                    continue
+                offset = candidate - page_num
+                # Accept small negative offsets (journal page < PDF page, due to
+                # cover pages/plates) — typically -1 to -10
+                if -20 < offset < 0:
+                    offset_samples.append(offset)
+
+    if not offset_samples:
+        return
+
+    offset_counts = Counter(offset_samples)
+    best_offset, count = offset_counts.most_common(1)[0]
+    # Require at least 3 consistent samples to avoid false positives
+    if count >= 3:
+        document.page_offset = best_offset
+        logger.info("page_offset fallback: detected offset=%d from %d running header samples", best_offset, count)
+
+
 def extract_metadata(
     document: DocumentRecord,
     blocks_by_page: dict[int, list[TextBlockRecord]],
@@ -155,6 +214,12 @@ def extract_metadata(
                 document.page_offset = end_page - total_pages
         except (ValueError, IndexError):
             pass
+
+    # page_offset fallback: detect running page numbers from text blocks.
+    # Scanned journals often have running headers like "Title NNN" where NNN is the
+    # journal page number. Compare these with PDF page numbers to compute offset.
+    if document.page_offset == 0 and len(blocks_by_page) > 10:
+        _detect_page_offset_from_running_headers(document, blocks_by_page, pdf_metadata)
 
     # Published by: line
     publisher_match = re.search(r"Published by:\s*(.+)", cover_text, re.IGNORECASE)
