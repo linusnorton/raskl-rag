@@ -129,31 +129,23 @@ resource "aws_iam_role_policy" "github_actions" {
     Version = "2012-10-17"
     Statement = [
       {
-        Effect = "Allow"
-        Action = [
-          "ecr:GetAuthorizationToken",
-          "ecr:BatchCheckLayerAvailability",
-          "ecr:GetDownloadUrlForLayer",
-          "ecr:BatchGetImage",
-          "ecr:PutImage",
-          "ecr:InitiateLayerUpload",
-          "ecr:UploadLayerPart",
-          "ecr:CompleteLayerUpload",
-        ]
+        Effect   = "Allow"
+        Action   = "ecr:GetAuthorizationToken"
         Resource = "*"
       },
       {
-        Effect = "Allow"
-        Action = [
-          "lambda:*",
-        ]
+        Effect   = "Allow"
+        Action   = "ecr:*"
+        Resource = "arn:aws:ecr:${local.region}:${local.account_id}:repository/${local.prefix}-*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = "lambda:*"
         Resource = "arn:aws:lambda:${local.region}:${local.account_id}:function:${local.prefix}-*"
       },
       {
         Effect = "Allow"
-        Action = [
-          "s3:*",
-        ]
+        Action = "s3:*"
         Resource = [
           "arn:aws:s3:::raskl-terraform-state",
           "arn:aws:s3:::raskl-terraform-state/*",
@@ -163,11 +155,16 @@ resource "aws_iam_role_policy" "github_actions" {
       },
       {
         Effect = "Allow"
-        Action = [
-          "iam:GetRole",
-          "iam:PassRole",
+        Action = "iam:*"
+        Resource = [
+          "arn:aws:iam::${local.account_id}:role/${local.prefix}-*",
+          "arn:aws:iam::${local.account_id}:oidc-provider/token.actions.githubusercontent.com",
         ]
-        Resource = aws_iam_role.lambda_exec.arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = "execute-api:*"
+        Resource = "arn:aws:execute-api:${local.region}:${local.account_id}:*"
       },
     ]
   })
