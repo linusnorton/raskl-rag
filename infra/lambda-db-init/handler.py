@@ -46,6 +46,20 @@ def lambda_handler(event, context):
 
     CREATE INDEX IF NOT EXISTS idx_chunks_text_fts
         ON chunks USING gin (to_tsvector('english', text));
+
+    CREATE TABLE IF NOT EXISTS chunk_changes (
+        id              SERIAL PRIMARY KEY,
+        doc_id          TEXT NOT NULL,
+        version         INTEGER NOT NULL,
+        indexed_at      TIMESTAMPTZ DEFAULT now(),
+        chunks_total    INTEGER NOT NULL,
+        chunks_added    INTEGER NOT NULL DEFAULT 0,
+        chunks_removed  INTEGER NOT NULL DEFAULT 0,
+        chunks_text_changed INTEGER NOT NULL DEFAULT 0,
+        chunks_unchanged INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_chunk_changes_doc ON chunk_changes(doc_id);
     """
 
     conn = psycopg2.connect(dsn)
