@@ -102,6 +102,14 @@ jobs:
         working-directory: infra
         run: terraform init
 
+      - name: Build db-init Lambda package
+        working-directory: infra
+        run: |
+          mkdir -p .build/db-init-pkg
+          pip install --target .build/db-init-pkg --platform manylinux2014_x86_64 --python-version 3.11 --only-binary=:all: psycopg2-binary -q
+          cp lambda-db-init/handler.py .build/db-init-pkg/
+          cd .build/db-init-pkg && zip -r ../db-init.zip . -q
+
       - name: Terraform Plan
         working-directory: infra
         run: |
