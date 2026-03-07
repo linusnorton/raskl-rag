@@ -51,18 +51,27 @@ Each user message goes through this process:
 
 ### D1 — Grounding via system prompt
 
-**What we chose:** The LLM receives this system prompt (abbreviated):
+**What we chose:** The LLM receives a system prompt that emphasises narrative synthesis
+(abbreviated):
 
-> Answer the question using the numbered context passages below. Cite every factual claim
-> using [N] references. Preserve original spellings from the source documents.
-> The author citations show surnames only — match to full names in queries by surname.
-> Cite ALL relevant information from context passages, including biographical notes,
-> introductions, and journal entries — all are equally valid sources.
-> If the context passages are insufficient, use the search_documents tool with alternative
-> queries. Do not invent facts. Only state what the sources say.
+> Write a narrative answer that synthesises information from the numbered context passages.
+> Connect facts across multiple sources to build a coherent account. Where sources offer
+> different perspectives or details, weave them together rather than listing them separately.
+> Cite sources using [N] after the relevant sentence or clause. Every factual claim must have
+> a citation, but integrate them naturally into prose — do not just list references.
+> Draw on ALL relevant context passages. Preserve original spellings, names, and dates.
+> All passage types are equally valid. Do not invent facts. Only state what the sources say.
 
-Temperature is set to 0.3 (not 0). Some variation helps with natural phrasing, but it is kept
-low to prioritise factual consistency.
+Temperature is set to 0.5. The grounding prompt and thinking mode prevent hallucination while
+allowing natural, connected prose. The earlier version (temperature 0.3, extraction-focused
+prompt) produced terse bullet-point answers that listed citations rather than synthesising a
+narrative.
+
+**Why the change from extraction to synthesis:** The original prompt optimised for fact-finding
+("Cite every factual claim using [N] references") which caused the LLM to act as a reference
+lister rather than a historian. The new prompt asks the model to "connect facts across sources"
+and "weave them together", producing longer, more coherent answers that are more useful for
+research.
 
 **Why:** The documents are historical sources — 19th- and 20th-century journals, correspondence,
 and field notes. Hallucinated dates, names, or attributions would be directly harmful to research.
@@ -137,6 +146,12 @@ nuance. A reranker is a smaller language model trained specifically to compare a
 document and output a relevance score — it does a deeper analysis than embedding similarity.
 Running a reranker on 30 candidates is fast (seconds), and it substantially improves precision:
 the top 10 after reranking are noticeably more relevant than the top 10 from raw search alone.
+
+**FTS AND-with-fallback:** The full-text search component uses a two-pass strategy. It first
+tries AND-based matching (all query terms must appear). If AND returns >= 10 matches, those are
+used. If fewer than 10, it falls back to OR-based matching (any term matches). This improves
+precision for multi-term queries like "Birch telegram Penang" where AND finds exactly the right
+passages, while preserving recall for queries where not all terms appear in the same chunk.
 
 **Why prepend title and author to each chunk:** A chunk of text might be highly relevant in the
 context of one document but less so from another. The reranker has no knowledge of which document
@@ -251,7 +266,7 @@ Key environment variables (prefix `CHAT_`):
 | `CHAT_LLM_MODEL` | `Qwen/Qwen3-30B-A3B-GPTQ-Int4` | Heavy stack default |
 | `CHAT_LLM_MAX_TOKENS` | `4096` | Maximum tokens to generate |
 | `CHAT_LLM_CONTEXT_WINDOW` | `40960` | Total context budget (prompt + generation) |
-| `CHAT_LLM_TEMPERATURE` | `0.3` | Low for factual RAG |
+| `CHAT_LLM_TEMPERATURE` | `0.5` | Balanced for narrative synthesis with grounding |
 
 ### Embedding
 
@@ -287,7 +302,7 @@ Key environment variables (prefix `CHAT_`):
 | `CHAT_BEDROCK_EMBED_MODEL_ID` | `amazon.titan-embed-text-v2:0` | Bedrock embedding model |
 | `CHAT_BEDROCK_RERANK_REGION` | `eu-central-1` | AWS region for reranking (may differ) |
 | `CHAT_BEDROCK_RERANK_MODEL_ID` | `amazon.rerank-v1:0` | Bedrock reranker model |
-| `CHAT_LLM_THINKING_BUDGET` | `0` | Extended thinking token budget (0=disabled, 2048 recommended) |
+| `CHAT_LLM_THINKING_BUDGET` | `2048` | Extended thinking token budget (0=disabled) |
 | `CHAT_RERANK_INSTRUCTION` | _(historical JMBRAS domain hint)_ | Prepended to rerank queries for domain context |
 
 ### Database

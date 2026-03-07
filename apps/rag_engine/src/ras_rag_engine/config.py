@@ -18,7 +18,7 @@ class RAGConfig(BaseSettings):
     llm_model: str = "Qwen/Qwen3-30B-A3B-GPTQ-Int4"
     llm_max_tokens: int = 4096
     llm_context_window: int = 40960
-    llm_temperature: float = 0.3
+    llm_temperature: float = 0.5
 
     # Embedding (sentence-transformers backend)
     embed_model: str = "./models/Qwen--Qwen3-Embedding-8B"
@@ -45,7 +45,7 @@ class RAGConfig(BaseSettings):
     bedrock_rerank_model_id: str = "amazon.rerank-v1:0"
 
     # Extended thinking (Bedrock only, 0 = disabled)
-    llm_thinking_budget: int = 0
+    llm_thinking_budget: int = 2048
 
     # Retrieval
     retrieval_top_k: int = 15

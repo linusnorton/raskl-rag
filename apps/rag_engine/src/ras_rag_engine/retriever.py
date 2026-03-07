@@ -37,6 +37,11 @@ def embed_query(query: str, config: RAGConfig) -> list[float]:
     return embeddings[0]
 
 
+_FTS_COUNT_SQL = """\
+SELECT count(*) FROM chunks c
+WHERE to_tsvector('english', c.text) @@ plainto_tsquery('english', %(query)s)
+"""
+
 RETRIEVE_SQL = """\
 WITH vector_results AS (
     SELECT chunk_id, doc_id, text, start_page, end_page, section_heading,
@@ -45,21 +50,16 @@ WITH vector_results AS (
     ORDER BY embedding <=> %(vec)s::vector
     LIMIT 50
 ),
-or_query AS (
-    SELECT to_tsquery('english',
-           replace(plainto_tsquery('english', %(query)s)::text, '&', '|')
-    ) AS q
-),
 text_results AS (
     SELECT c.chunk_id,
            ROW_NUMBER() OVER (ORDER BY ts_rank(
                setweight(to_tsvector('english', c.text), 'B')
                || setweight(to_tsvector('english',
                    coalesce(d.title, '') || ' ' || coalesce(d.author, '')), 'A'),
-               oq.q) DESC) AS trank
+               %(tsquery)s::tsquery) DESC) AS trank
     FROM chunks c
-    JOIN documents d ON c.doc_id = d.doc_id, or_query oq
-    WHERE to_tsvector('english', c.text) @@ oq.q
+    JOIN documents d ON c.doc_id = d.doc_id
+    WHERE to_tsvector('english', c.text) @@ %(tsquery)s::tsquery
     LIMIT 50
 ),
 fused AS (
@@ -82,6 +82,32 @@ ORDER BY f.rrf_score DESC
 LIMIT %(top_k)s
 """
 
+# Minimum AND-based FTS matches before falling back to OR
+_FTS_AND_MIN_MATCHES = 10
+
+
+def _build_tsquery(query: str, cur: psycopg.Cursor) -> str:
+    """Build a tsquery string, trying AND first and falling back to OR if too few matches."""
+    # Get the AND-based tsquery (PostgreSQL default for plainto_tsquery)
+    cur.execute("SELECT plainto_tsquery('english', %(q)s)::text", {"q": query})
+    and_query = cur.fetchone()[0]
+
+    if not and_query:
+        return and_query
+
+    # Count AND matches
+    cur.execute(_FTS_COUNT_SQL, {"query": query})
+    and_count = cur.fetchone()[0]
+
+    if and_count >= _FTS_AND_MIN_MATCHES:
+        log.info("FTS AND query matched %d chunks, using AND", and_count)
+        return and_query
+
+    # Fall back to OR
+    or_query = and_query.replace("&", "|")
+    log.info("FTS AND query matched only %d chunks (< %d), falling back to OR", and_count, _FTS_AND_MIN_MATCHES)
+    return or_query
+
 
 def retrieve(query: str, config: RAGConfig, top_k: int | None = None) -> list[RetrievedChunk]:
     """Embed the query and retrieve the most similar chunks via hybrid search (vector + full-text RRF)."""
@@ -93,7 +119,8 @@ def retrieve(query: str, config: RAGConfig, top_k: int | None = None) -> list[Re
     with psycopg.connect(config.dsn) as conn:
         register_vector(conn)
         with conn.cursor() as cur:
-            cur.execute(RETRIEVE_SQL, {"vec": vec_str, "query": query, "top_k": fetch_k})
+            tsquery = _build_tsquery(query, cur)
+            cur.execute(RETRIEVE_SQL, {"vec": vec_str, "tsquery": tsquery, "top_k": fetch_k})
             rows = cur.fetchall()
 
     chunks = []
