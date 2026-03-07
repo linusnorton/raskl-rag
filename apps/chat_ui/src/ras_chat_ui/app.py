@@ -131,7 +131,13 @@ def main() -> None:
         title="raskl-rag Chat",
         description="Ask questions about JMBRAS and Swettenham historical documents.",
     )
-    demo.launch(server_port=config.gradio_port, share=config.gradio_share)
+    auth = ("raskl", config.gradio_password) if config.gradio_password else None
+    demo.launch(
+        server_name="0.0.0.0",
+        server_port=config.gradio_port,
+        share=config.gradio_share,
+        auth=auth,
+    )
 
 
 if __name__ == "__main__":

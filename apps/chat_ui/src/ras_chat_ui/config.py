@@ -49,7 +49,6 @@ class ChatConfig(BaseSettings):
 
     # Retrieval
     retrieval_top_k: int = 15
-    retrieval_score_threshold: float = 0.3
 
     # Database
     db_host: str = "localhost"
@@ -65,6 +64,7 @@ class ChatConfig(BaseSettings):
     # Gradio
     gradio_port: int = 7860
     gradio_share: bool = False
+    gradio_password: str = "Swettenham"
 
     @property
     def dsn(self) -> str:
