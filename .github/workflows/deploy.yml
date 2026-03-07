@@ -16,14 +16,15 @@ jobs:
   changes:
     runs-on: ubuntu-latest
     outputs:
-      api: ${{ steps.filter.outputs.api }}
-      docproc: ${{ steps.filter.outputs.docproc }}
-      chunker: ${{ steps.filter.outputs.chunker }}
-      infra: ${{ steps.filter.outputs.infra }}
+      api: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.api }}
+      docproc: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.docproc }}
+      chunker: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.chunker }}
+      infra: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.infra }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: dorny/paths-filter@v3
+        if: github.event_name != 'workflow_dispatch'
         id: filter
         with:
           filters: |
