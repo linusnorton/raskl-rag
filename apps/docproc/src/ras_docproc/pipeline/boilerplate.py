@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from collections import Counter
 
 from ras_docproc.config import PipelineConfig
@@ -79,8 +80,10 @@ def detect_boilerplate(
                     is_boilerplate = True
                     break
 
-            # Remove known platform headings (e.g. "PROJECT MUSE" on cover pages)
-            if not is_boilerplate and block.text_clean.strip().upper() in {p.upper() for p in PLATFORM_HEADINGS}:
+            # Remove known platform headings (e.g. "PROJECT MUSE®" on cover pages)
+            if not is_boilerplate:
+                text_normalized = re.sub(r"[^\w\s]", "", block.text_clean.strip()).strip().upper()
+                is_boilerplate = text_normalized in {p.upper() for p in PLATFORM_HEADINGS}
                 is_boilerplate = True
 
             # Also remove header/footer zone blocks from short documents less aggressively

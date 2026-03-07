@@ -4,8 +4,8 @@ output "api_url" {
 }
 
 output "chat_url" {
-  description = "Chat UI URL"
-  value       = aws_apigatewayv2_stage.default.invoke_url
+  description = "Chat UI URL (Open WebUI on App Runner)"
+  value       = "https://${aws_apprunner_service.open_webui.service_url}"
 }
 
 output "upload_url" {
@@ -37,4 +37,9 @@ output "ecr_chat_repo" {
 output "ecr_docproc_repo" {
   description = "ECR repository URL for docproc image"
   value       = aws_ecr_repository.docproc.repository_url
+}
+
+output "open_webui_url" {
+  description = "Open WebUI URL"
+  value       = "https://${aws_apprunner_service.open_webui.service_url}"
 }

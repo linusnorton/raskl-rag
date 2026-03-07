@@ -1,8 +1,8 @@
 # raskl-rag
 
 A pipeline for processing historical JMBRAS (Journal of the Malayan Branch of the Royal Asiatic
-Society) and Swettenham PDFs into a searchable RAG (Retrieval-Augmented Generation) system with a
-Gradio chat interface.
+Society) and Swettenham PDFs into a searchable RAG (Retrieval-Augmented Generation) system with an
+Open WebUI chat interface.
 
 ## Repository structure
 
@@ -10,7 +10,7 @@ Gradio chat interface.
 apps/
   docproc/          PDF → structured JSONL (Qwen3 VL via Bedrock)
   chunker_indexer/  JSONL → chunks → embeddings → PostgreSQL/pgvector
-  chat_ui/          Gradio chat interface with agentic RAG search
+  rag_engine/       OpenAI-compatible RAG API (FastAPI + Bedrock)
 infra/              Terraform for AWS serverless deployment
 docker/             Dockerfiles for Lambda containers
 scripts/            Shell scripts for local development workflows
@@ -20,7 +20,7 @@ Each app has a README with design decisions and rationale:
 
 - [`apps/docproc/README.md`](apps/docproc/README.md) — PDF processing pipeline
 - [`apps/chunker_indexer/README.md`](apps/chunker_indexer/README.md) — chunking, embedding, hybrid search
-- [`apps/chat_ui/README.md`](apps/chat_ui/README.md) — retrieval, reranking, chat interface
+- [`apps/rag_engine/README.md`](apps/rag_engine/README.md) — RAG API, retrieval, reranking, citations
 
 See [`CLAUDE.md`](CLAUDE.md) for all individual commands.
 
@@ -34,7 +34,7 @@ uv sync --all-packages
 
 ## Local development
 
-Local Gradio UI and PostgreSQL, with all model inference via AWS Bedrock. No GPU needed.
+Open WebUI + local RAG API and PostgreSQL, with all model inference via AWS Bedrock. No GPU needed.
 
 **Step 1 — Process PDFs**
 
@@ -55,29 +55,37 @@ uv run ras-docproc run --pdf "path/to/file.pdf" --backend qwen3vl
 Starts local PostgreSQL, initialises the schema, and indexes all processed documents using
 Bedrock Titan Embed v2.
 
-**Step 3 — Start the chat UI**
+**Step 3 — Start the RAG API**
 
 ```bash
-./scripts/start-chat.sh
+./scripts/start-api.sh
 ```
 
-Starts local PostgreSQL and the Gradio UI on port 7860. LLM, embedding, and reranking all
-run via Bedrock.
+Starts the OpenAI-compatible RAG API on port 8000.
+
+**Step 4 — Start Open WebUI**
+
+```bash
+docker compose up open-webui
+```
+
+Open WebUI on port 3000, connected to the RAG API.
 
 ---
 
 ## Serverless deployment (AWS)
 
 Upload a PDF → DocProc Lambda (Qwen3 VL) → versioned JSONL to S3 → Chunker Lambda
-(Bedrock Titan Embed) → Neon pgvector → Chat Lambda (Gradio + Bedrock).
+(Bedrock Titan Embed) → Neon pgvector → RAG API Lambda → Open WebUI (App Runner).
 
 See [`DEPLOYMENT.md`](DEPLOYMENT.md) for full details. The serverless stack uses:
 
-- AWS Lambda (chat + docproc + upload) with Bedrock for all model inference
+- AWS Lambda (RAG API + docproc + upload) with Bedrock for all model inference
+- App Runner (Open WebUI) with persistent chat history in Neon
 - Neon (serverless PostgreSQL + pgvector)
 - S3 for PDF upload and docproc output
 - Terraform in `infra/` to provision everything
-- GitHub Actions for deploy-on-push and per-PR preview environments
+- GitHub Actions for deploy-on-push
 
 ---
 

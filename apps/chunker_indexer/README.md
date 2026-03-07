@@ -24,7 +24,7 @@ ras-chunker-indexer  ← this app
 PostgreSQL + pgvector
     │
     ▼
-ras-chat-ui  (retrieves relevant chunks for each user query)
+ras-rag-engine  (OpenAI-compatible RAG API → Open WebUI)
 ```
 
 ## Architecture overview

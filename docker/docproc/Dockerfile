@@ -13,10 +13,10 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 COPY apps/docproc/ apps/docproc/
 COPY apps/chunker_indexer/ apps/chunker_indexer/
-COPY apps/chat_ui/pyproject.toml apps/chat_ui/pyproject.toml
+COPY apps/rag_engine/pyproject.toml apps/rag_engine/pyproject.toml
 
 # Stub out other workspace members
-RUN mkdir -p apps/chat_ui/src/ras_chat_ui && touch apps/chat_ui/src/ras_chat_ui/__init__.py
+RUN mkdir -p apps/rag_engine/src/ras_rag_engine && touch apps/rag_engine/src/ras_rag_engine/__init__.py
 
 # Install docproc + chunker with cloud dependencies
 RUN uv sync --package ras-docproc --package ras-chunker-indexer --extra cloud --no-dev --frozen

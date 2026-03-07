@@ -28,7 +28,7 @@ jobs:
       - name: Run chunker tests
         run: uv run --package ras-chunker-indexer --extra dev pytest apps/chunker_indexer/tests/ -v
 
-  build-chat:
+  build-api:
     needs: test
     runs-on: ubuntu-latest
     outputs:
@@ -50,10 +50,10 @@ jobs:
         id: meta
         run: echo "sha=${GITHUB_SHA::8}" >> "$GITHUB_OUTPUT"
 
-      - name: Build and push chat image
+      - name: Build and push API image
         run: |
           IMAGE="${{ steps.ecr-login.outputs.registry }}/raskl-chat:${{ steps.meta.outputs.sha }}"
-          docker build -f docker/chat/Dockerfile -t "$IMAGE" .
+          docker build -f docker/api/Dockerfile -t "$IMAGE" .
           docker push "$IMAGE"
 
   build-docproc:
@@ -112,8 +112,29 @@ jobs:
           docker build -f docker/chunker/Dockerfile -t "$IMAGE" .
           docker push "$IMAGE"
 
+  mirror-open-webui:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Mirror Open WebUI image to ECR
+        run: |
+          ECR_REPO="${{ steps.ecr-login.outputs.registry }}/raskl-open-webui"
+          docker pull ghcr.io/open-webui/open-webui:main
+          docker tag ghcr.io/open-webui/open-webui:main "${ECR_REPO}:latest"
+          docker push "${ECR_REPO}:latest"
+
   deploy:
-    needs: [build-chat, build-docproc, build-chunker]
+    needs: [build-api, build-docproc, build-chunker, mirror-open-webui]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -152,7 +173,7 @@ jobs:
         working-directory: infra
         run: |
           terraform plan \
-            -var="chat_image_tag=${{ needs.build-chat.outputs.image_tag }}" \
+            -var="chat_image_tag=${{ needs.build-api.outputs.image_tag }}" \
             -var="docproc_image_tag=${{ needs.build-docproc.outputs.image_tag }}" \
             -var="chunker_image_tag=${{ needs.build-chunker.outputs.image_tag }}" \
             -var="neon_api_key=${{ secrets.NEON_API_KEY }}" \
@@ -169,7 +190,7 @@ jobs:
           CHAT_REPO=$(aws ecr describe-repositories --repository-names raskl-chat --query 'repositories[0].repositoryUri' --output text)
           aws lambda update-function-code \
             --function-name raskl-chat \
-            --image-uri "${CHAT_REPO}:${{ needs.build-chat.outputs.image_tag }}"
+            --image-uri "${CHAT_REPO}:${{ needs.build-api.outputs.image_tag }}"
 
           # Update docproc Lambda to new image
           DOCPROC_REPO=$(aws ecr describe-repositories --repository-names raskl-docproc --query 'repositories[0].repositoryUri' --output text)

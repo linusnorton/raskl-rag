@@ -30,7 +30,7 @@ data/out/{doc_id}/
 ras-chunker-indexer  (chunks + embeds + stores in PostgreSQL)
     │
     ▼
-ras-chat-ui  (RAG search + Gradio interface)
+ras-rag-engine  (OpenAI-compatible RAG API → Open WebUI)
 ```
 
 ## Architecture overview

@@ -6,15 +6,15 @@ Monorepo for processing historical JMBRAS/Swettenham PDFs into structured JSONL 
 
 - `apps/docproc/` — Main document processing pipeline (`ras-docproc`)
 - `apps/chunker_indexer/` — Chunk + index JSONL into PostgreSQL/pgvector (`ras-chunker`)
-- `apps/chat_ui/` — Gradio chat interface with agentic RAG (`ras-chat-ui`)
-- `infra/` — Terraform for AWS serverless deployment (Lambda, Neon, S3, ECR)
-- `docker/` — Dockerfiles for Lambda containers (`chat/`, `docproc/`)
+- `apps/rag_engine/` — OpenAI-compatible RAG API with FastAPI (`ras-rag-engine`)
+- `infra/` — Terraform for AWS serverless deployment (Lambda, Neon, S3, ECR, App Runner)
+- `docker/` — Dockerfiles for Lambda containers (`api/`, `docproc/`, `chunker/`)
 - `.github/workflows/` — CI/CD (deploy on push to master, PR chat previews)
 
 ## Two modes of operation
 
 ### Local mode
-Local Gradio UI, local PostgreSQL, local PDF files. All model inference via AWS Bedrock (`AWS_PROFILE=linusnorton`).
+Open WebUI + local RAG API, local PostgreSQL, local PDF files. All model inference via AWS Bedrock (`AWS_PROFILE=linusnorton`).
 
 ```bash
 # 1. Process all PDFs (Qwen3 VL via Bedrock)
@@ -23,15 +23,18 @@ Local Gradio UI, local PostgreSQL, local PDF files. All model inference via AWS 
 # 2. Embed + index into local PostgreSQL (Bedrock Titan Embed v2)
 ./scripts/embed.sh
 
-# 3. Start chat UI (Bedrock for LLM/embed/rerank)
-./scripts/start-chat.sh
+# 3. Start RAG API (Bedrock for LLM/embed/rerank)
+./scripts/start-api.sh
+
+# 4. Start Open WebUI (connects to RAG API on port 8000)
+docker compose up open-webui
 ```
 
 ### Deployed mode
-Everything in AWS: Lambda, Neon (serverless PostgreSQL), S3, Bedrock.
+Everything in AWS: Lambda (RAG API), App Runner (Open WebUI), Neon (serverless PostgreSQL), S3, Bedrock.
 
 Upload a PDF → DocProc Lambda (Qwen3 VL) → versioned JSONL to S3 → Chunker Lambda
-(Bedrock Titan Embed) → Neon pgvector → Chat Lambda (Gradio + Bedrock).
+(Bedrock Titan Embed) → Neon pgvector → RAG API Lambda → Open WebUI (App Runner).
 
 See `DEPLOYMENT.md` for full details.
 
@@ -108,10 +111,11 @@ Config fields: `CHAT_LLM_PROVIDER`, `CHAT_EMBED_PROVIDER`, `CHAT_RERANK_PROVIDER
 See `DEPLOYMENT.md` for full details. Summary:
 
 - **Terraform** (`infra/`) provisions Neon (pgvector), S3, ECR, Lambda functions, IAM
-- **Chat Lambda** — Gradio via Lambda Web Adapter, Bedrock for LLM/embed/rerank
+- **RAG API Lambda** — OpenAI-compatible API via Lambda Web Adapter, Bedrock for LLM/embed/rerank
+- **Open WebUI** — Chat frontend on App Runner, connects to RAG API Lambda
 - **DocProc Lambda** — S3-triggered, Qwen3 VL + chunk + Bedrock embed + Neon index
 - **Upload Lambda** — HTML form with password auth → S3 presigned upload
-- **GitHub Actions** — deploy on push to master, per-PR chat previews
+- **GitHub Actions** — deploy on push to master
 
 ## Documentation
 
@@ -119,7 +123,7 @@ Each app has a README that documents its design decisions and rationale:
 
 - `apps/docproc/README.md` — PDF processing pipeline: backends, page offset, boilerplate, footnotes, IDs
 - `apps/chunker_indexer/README.md` — chunking, embedding, hybrid search, HNSW, task prefixes
-- `apps/chat_ui/README.md` — retrieval, reranking, citation renumbering, grounding, provider architecture
+- `apps/rag_engine/README.md` — RAG API, retrieval, reranking, citation renumbering, provider architecture
 
 **When making any architectural change** (new feature, changed algorithm, tuned parameter, added
 model, changed prompt), update the relevant README to record:
@@ -136,5 +140,5 @@ model, changed prompt), update the relevant README to record:
 - E2E tests preferred over unit tests
 - Tests use actual PDFs from `docs/` directory
 - Provider pattern for swappable model backends (Bedrock default, local alternatives)
-- `boto3` is an optional `[cloud]` dependency in docproc, chat_ui and chunker_indexer
+- `boto3` is an optional `[cloud]` dependency in docproc, rag_engine and chunker_indexer
 - Update the relevant app README when making architectural changes (see Documentation section)

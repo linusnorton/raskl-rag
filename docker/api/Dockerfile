@@ -11,12 +11,10 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
 COPY apps/rag_engine/ apps/rag_engine/
-COPY apps/chat_ui/pyproject.toml apps/chat_ui/pyproject.toml
 COPY apps/docproc/pyproject.toml apps/docproc/pyproject.toml
 COPY apps/chunker_indexer/pyproject.toml apps/chunker_indexer/pyproject.toml
 
 # Stub out other workspace members so uv resolves without their source
-RUN mkdir -p apps/chat_ui/src/ras_chat_ui && touch apps/chat_ui/src/ras_chat_ui/__init__.py
 RUN mkdir -p apps/docproc/src/ras_docproc && touch apps/docproc/src/ras_docproc/__init__.py
 RUN mkdir -p apps/chunker_indexer/src/ras_chunker && touch apps/chunker_indexer/src/ras_chunker/__init__.py
 

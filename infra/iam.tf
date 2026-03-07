@@ -186,6 +186,16 @@ resource "aws_iam_role_policy" "github_actions" {
         Action   = ["ses:*"]
         Resource = "*"
       },
+      {
+        Effect   = "Allow"
+        Action   = ["apprunner:*"]
+        Resource = "arn:aws:apprunner:${local.region}:${local.account_id}:service/${local.prefix}-*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["iam:PassRole"]
+        Resource = "arn:aws:iam::${local.account_id}:role/${local.prefix}-apprunner-*"
+      },
     ]
   })
 }
