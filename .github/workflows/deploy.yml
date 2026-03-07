@@ -195,6 +195,22 @@ jobs:
           cp lambda-db-init/handler.py .build/db-init-pkg/
           cd .build/db-init-pkg && zip -r ../db-init.zip . -q
 
+      - name: Login to ECR
+        if: needs.changes.outputs.infra == 'true'
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Mirror Open WebUI image to ECR
+        if: needs.changes.outputs.infra == 'true'
+        run: |
+          ECR_REPO="${{ steps.ecr-login.outputs.registry }}/raskl-open-webui"
+          # Ensure ECR repo exists (may have been created by previous Terraform run)
+          aws ecr describe-repositories --repository-names raskl-open-webui 2>/dev/null || \
+            aws ecr create-repository --repository-name raskl-open-webui --image-tag-mutability MUTABLE
+          docker pull ghcr.io/open-webui/open-webui:main
+          docker tag ghcr.io/open-webui/open-webui:main "${ECR_REPO}:latest"
+          docker push "${ECR_REPO}:latest"
+
       - name: Terraform Plan
         if: needs.changes.outputs.infra == 'true'
         working-directory: infra
@@ -212,19 +228,6 @@ jobs:
         if: needs.changes.outputs.infra == 'true'
         working-directory: infra
         run: terraform apply -auto-approve tfplan
-
-      - name: Login to ECR
-        if: needs.changes.outputs.infra == 'true'
-        id: ecr-login
-        uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Mirror Open WebUI image to ECR
-        if: needs.changes.outputs.infra == 'true'
-        run: |
-          ECR_REPO="${{ steps.ecr-login.outputs.registry }}/raskl-open-webui"
-          docker pull ghcr.io/open-webui/open-webui:main
-          docker tag ghcr.io/open-webui/open-webui:main "${ECR_REPO}:latest"
-          docker push "${ECR_REPO}:latest"
 
       - name: Update Lambda images
         run: |
