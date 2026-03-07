@@ -112,29 +112,8 @@ jobs:
           docker build -f docker/chunker/Dockerfile -t "$IMAGE" .
           docker push "$IMAGE"
 
-  mirror-open-webui:
-    needs: test
-    runs-on: ubuntu-latest
-    steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Login to ECR
-        id: ecr-login
-        uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Mirror Open WebUI image to ECR
-        run: |
-          ECR_REPO="${{ steps.ecr-login.outputs.registry }}/raskl-open-webui"
-          docker pull ghcr.io/open-webui/open-webui:main
-          docker tag ghcr.io/open-webui/open-webui:main "${ECR_REPO}:latest"
-          docker push "${ECR_REPO}:latest"
-
   deploy:
-    needs: [build-api, build-docproc, build-chunker, mirror-open-webui]
+    needs: [build-api, build-docproc, build-chunker]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -183,6 +162,17 @@ jobs:
       - name: Terraform Apply
         working-directory: infra
         run: terraform apply -auto-approve tfplan
+
+      - name: Login to ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Mirror Open WebUI image to ECR
+        run: |
+          ECR_REPO="${{ steps.ecr-login.outputs.registry }}/raskl-open-webui"
+          docker pull ghcr.io/open-webui/open-webui:main
+          docker tag ghcr.io/open-webui/open-webui:main "${ECR_REPO}:latest"
+          docker push "${ECR_REPO}:latest"
 
       - name: Update Lambda images
         run: |
