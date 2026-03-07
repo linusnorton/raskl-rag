@@ -19,12 +19,12 @@ import time
 
 logging.basicConfig(level=logging.DEBUG, format="%(name)s %(levelname)s %(message)s")
 
-from ras_chat_ui.config import ChatConfig
-from ras_chat_ui.providers import get_embed_provider, get_llm_provider, get_rerank_provider
-from ras_chat_ui.retriever import RETRIEVE_SQL, RetrievedChunk, embed_query, retrieve
-from ras_chat_ui.reranker import _doc_text, rerank
-from ras_chat_ui.tools import format_chunks_for_context
-from ras_chat_ui.agent import SYSTEM_PROMPT
+from ras_rag_engine.config import RAGConfig as ChatConfig
+from ras_rag_engine.providers import get_embed_provider, get_llm_provider, get_rerank_provider
+from ras_rag_engine.retriever import RETRIEVE_SQL, RetrievedChunk, embed_query, retrieve
+from ras_rag_engine.reranker import _doc_text, rerank
+from ras_rag_engine.tools import format_chunks_for_context
+from ras_rag_engine.agent import SYSTEM_PROMPT
 
 import psycopg
 from pgvector.psycopg import register_vector

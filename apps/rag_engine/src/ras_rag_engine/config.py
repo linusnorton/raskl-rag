@@ -1,11 +1,11 @@
-"""Chat UI configuration via environment variables."""
+"""RAG engine configuration via environment variables."""
 
 from __future__ import annotations
 
 from pydantic_settings import BaseSettings
 
 
-class ChatConfig(BaseSettings):
+class RAGConfig(BaseSettings):
     model_config = {"env_prefix": "CHAT_"}
 
     # Provider selection
@@ -61,10 +61,9 @@ class ChatConfig(BaseSettings):
     # Web search
     web_search_enabled: bool = True
 
-    # Gradio
-    gradio_port: int = 7860
-    gradio_share: bool = False
-    gradio_password: str = "Swettenham"
+    # API server
+    api_port: int = 8000
+    api_key: str = ""  # If set, requires Bearer token auth
 
     @property
     def dsn(self) -> str:

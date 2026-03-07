@@ -10,6 +10,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 # Copy workspace files needed for dependency resolution
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
+COPY apps/rag_engine/ apps/rag_engine/
 COPY apps/chat_ui/ apps/chat_ui/
 COPY apps/docproc/pyproject.toml apps/docproc/pyproject.toml
 COPY apps/chunker_indexer/pyproject.toml apps/chunker_indexer/pyproject.toml
@@ -18,7 +19,7 @@ COPY apps/chunker_indexer/pyproject.toml apps/chunker_indexer/pyproject.toml
 RUN mkdir -p apps/docproc/src/ras_docproc && touch apps/docproc/src/ras_docproc/__init__.py
 RUN mkdir -p apps/chunker_indexer/src/ras_chunker && touch apps/chunker_indexer/src/ras_chunker/__init__.py
 
-# Install chat_ui with cloud dependencies
+# Install chat_ui with cloud dependencies (pulls in ras-rag-engine transitively)
 RUN uv sync --package ras-chat-ui --extra cloud --no-dev --frozen
 
 # Lambda Web Adapter config

@@ -8,7 +8,7 @@ from dataclasses import dataclass
 import psycopg
 from pgvector.psycopg import register_vector
 
-from .config import ChatConfig
+from .config import RAGConfig
 from .providers import get_embed_provider
 
 log = logging.getLogger(__name__)
@@ -30,7 +30,7 @@ class RetrievedChunk:
     page_offset: int = 0
 
 
-def embed_query(query: str, config: ChatConfig) -> list[float]:
+def embed_query(query: str, config: RAGConfig) -> list[float]:
     """Embed a single query string via the configured provider."""
     provider = get_embed_provider(config)
     embeddings = provider.embed([query])
@@ -83,7 +83,7 @@ LIMIT %(top_k)s
 """
 
 
-def retrieve(query: str, config: ChatConfig, top_k: int | None = None) -> list[RetrievedChunk]:
+def retrieve(query: str, config: RAGConfig, top_k: int | None = None) -> list[RetrievedChunk]:
     """Embed the query and retrieve the most similar chunks via hybrid search (vector + full-text RRF)."""
     top_k = top_k or config.retrieval_top_k
     fetch_k = config.rerank_candidates if config.rerank_enabled else top_k

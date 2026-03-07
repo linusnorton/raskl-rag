@@ -24,8 +24,8 @@ import re
 
 import pytest
 
-from ras_chat_ui.agent import run_agent_streaming
-from ras_chat_ui.config import ChatConfig
+from ras_rag_engine.agent import run_agent_streaming
+from ras_rag_engine.config import RAGConfig as ChatConfig
 
 NEON_DSN = os.environ.get(
     "E2E_DATABASE_DSN",

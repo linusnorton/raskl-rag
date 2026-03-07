@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from .config import ChatConfig
+from .config import RAGConfig
 from .providers import get_rerank_provider
 from .retriever import RetrievedChunk
 
@@ -22,7 +22,7 @@ def _doc_text(chunk: RetrievedChunk) -> str:
     return "\n".join(parts)
 
 
-def rerank(query: str, chunks: list[RetrievedChunk], config: ChatConfig, top_k: int) -> list[RetrievedChunk]:
+def rerank(query: str, chunks: list[RetrievedChunk], config: RAGConfig, top_k: int) -> list[RetrievedChunk]:
     """Rerank chunks using the configured backend and return top_k by relevance."""
     if not chunks:
         return chunks

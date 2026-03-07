@@ -176,7 +176,7 @@ class BedrockLLMProvider(LLMProvider):
         if system_parts:
             kwargs["system"] = system_parts
         if tools:
-            kwargs["toolConfig"] = {"tools": _convert_tools(tools)}
+            kwargs["toolConfig"] = {"tools": _openai_tools_to_bedrock(tools)}
         resp = client.converse_stream(**kwargs)
 
         for event in resp["stream"]:

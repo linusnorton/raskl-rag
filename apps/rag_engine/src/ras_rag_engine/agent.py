@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Generator
 
-from .config import ChatConfig
+from .config import RAGConfig
 from .providers import get_llm_provider
 from .providers.base import LLMProvider
 from .retriever import RetrievedChunk, retrieve
@@ -46,7 +46,7 @@ def _build_system_prompt(chunks: list[RetrievedChunk]) -> str:
 def _compute_max_tokens(
     messages: list[dict],
     llm: LLMProvider,
-    config: ChatConfig,
+    config: RAGConfig,
     *,
     tools: list[dict] | None = None,
 ) -> int:
@@ -61,7 +61,7 @@ def _compute_max_tokens(
 def run_agent_streaming(
     user_message: str,
     history: list[dict],
-    config: ChatConfig,
+    config: RAGConfig,
 ) -> Generator[tuple[str, list[RetrievedChunk]], None, None]:
     """Run the agentic RAG loop, yielding (partial_text, all_chunks) tuples.
 
@@ -80,7 +80,7 @@ def run_agent_streaming(
     messages: list[dict] = [system_msg]
     for entry in history:
         content = entry.get("content") or ""
-        # Gradio 6.x may pass content as [{"text": "...", "type": "text"}]
+        # Handle content as list of text blocks (e.g. from Gradio 6.x or OpenAI format)
         if isinstance(content, list):
             content = "".join(block.get("text", "") for block in content if isinstance(block, dict))
         messages.append({"role": entry["role"], "content": content})

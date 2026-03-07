@@ -7,10 +7,10 @@ from typing import TYPE_CHECKING
 from .base import EmbedProvider, LLMProvider, RerankProvider
 
 if TYPE_CHECKING:
-    from ..config import ChatConfig
+    from ..config import RAGConfig
 
 
-def get_llm_provider(config: ChatConfig) -> LLMProvider:
+def get_llm_provider(config: RAGConfig) -> LLMProvider:
     if config.llm_provider == "bedrock":
         from .bedrock_llm import BedrockLLMProvider
 
@@ -28,7 +28,7 @@ def get_llm_provider(config: ChatConfig) -> LLMProvider:
         )
 
 
-def get_embed_provider(config: ChatConfig) -> EmbedProvider:
+def get_embed_provider(config: RAGConfig) -> EmbedProvider:
     if config.embed_provider == "bedrock":
         from .bedrock_embed import BedrockEmbedProvider
 
@@ -50,7 +50,7 @@ def get_embed_provider(config: ChatConfig) -> EmbedProvider:
         )
 
 
-def get_rerank_provider(config: ChatConfig) -> RerankProvider:
+def get_rerank_provider(config: RAGConfig) -> RerankProvider:
     if config.rerank_provider == "bedrock":
         from .bedrock_rerank import BedrockRerankProvider
 

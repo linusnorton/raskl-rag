@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import json
-
 import warnings
 
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
     from duckduckgo_search import DDGS
 
-from .config import ChatConfig
+from .config import RAGConfig
 from .retriever import RetrievedChunk, retrieve
 
 _SEARCH_TOOL = {
@@ -59,7 +58,7 @@ _WEB_SEARCH_TOOL = {
 TOOL_DEFINITIONS = [_SEARCH_TOOL, _WEB_SEARCH_TOOL]
 
 
-def get_tool_definitions(config: ChatConfig) -> list[dict]:
+def get_tool_definitions(config: RAGConfig) -> list[dict]:
     """Return tool definitions based on config (web_search conditional)."""
     tools = [_SEARCH_TOOL]
     if config.web_search_enabled:
@@ -106,7 +105,7 @@ def format_chunks_for_context(chunks: list[RetrievedChunk], start_index: int = 1
     return "\n\n".join(parts)
 
 
-def _execute_search_documents(args: dict, config: ChatConfig, start_index: int = 1) -> tuple[str, list[RetrievedChunk]]:
+def _execute_search_documents(args: dict, config: RAGConfig, start_index: int = 1) -> tuple[str, list[RetrievedChunk]]:
     """Execute a document search and return formatted results + raw chunks."""
     query = args["query"]
     chunks = retrieve(query, config)
@@ -131,7 +130,7 @@ def _execute_web_search(args: dict) -> tuple[str, list[RetrievedChunk]]:
     return "\n\n".join(parts), []
 
 
-def execute_tool_call(name: str, args_json: str, config: ChatConfig, start_index: int = 1) -> tuple[str, list[RetrievedChunk]]:
+def execute_tool_call(name: str, args_json: str, config: RAGConfig, start_index: int = 1) -> tuple[str, list[RetrievedChunk]]:
     """Dispatch a tool call by name. Returns (result_text, retrieved_chunks)."""
     args = json.loads(args_json) if isinstance(args_json, str) else args_json
 
