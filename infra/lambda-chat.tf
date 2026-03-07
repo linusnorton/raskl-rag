@@ -42,7 +42,7 @@ resource "aws_lambda_function" "chat" {
 
       # Lambda Web Adapter
       AWS_LWA_INVOKE_MODE          = "response_stream"
-      AWS_LWA_READINESS_CHECK_PATH = "/v1/models"
+      AWS_LWA_READINESS_CHECK_PATH = "/"
       AWS_LWA_INIT_BINARY          = "/opt/extensions/lambda-adapter"
       PORT                         = "8000"
 

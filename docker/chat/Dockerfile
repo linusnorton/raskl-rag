@@ -27,7 +27,7 @@ RUN uv sync --package ras-rag-engine --extra cloud --no-dev --frozen
 ENV PORT=8000
 ENV AWS_LWA_INVOKE_MODE=response_stream
 ENV AWS_LWA_PORT=8000
-ENV AWS_LWA_READINESS_CHECK_PATH=/v1/models
+ENV AWS_LWA_READINESS_CHECK_PATH=/
 ENV UV_CACHE_DIR=/tmp/uv-cache
 
 # Bedrock provider defaults

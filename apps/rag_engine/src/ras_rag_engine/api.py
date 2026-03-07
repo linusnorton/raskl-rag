@@ -53,6 +53,11 @@ class ChatCompletionRequest(BaseModel):
     temperature: float | None = None
 
 
+@app.get("/")
+def healthcheck():
+    return {"status": "ok"}
+
+
 @app.get("/v1/models")
 def list_models(config: RAGConfig = Depends(_get_config)):
     return {
