@@ -23,6 +23,11 @@ Rules:
 - Use **bold** and *italic* for emphasis where the original uses bold/italic.
 - Use # for main headings, ## for subheadings.
 - Use > for block quotes.
+- Separate each distinct paragraph or entry with a blank line.
+- In journals or diaries, treat each date entry (e.g. "6th October.", "Monday, 12th March.") \
+as the start of a new paragraph — always insert a blank line before it.
+- Preserve natural paragraph breaks from the source document; do not merge adjacent paragraphs \
+into a single block of text.
 - If the page has footnotes (small text at the bottom, often after a horizontal rule), \
 separate them with --- and format each as a numbered line: 1. footnote text
 - Convert superscript footnote references in body text to ^N notation (e.g. ^1, ^23).

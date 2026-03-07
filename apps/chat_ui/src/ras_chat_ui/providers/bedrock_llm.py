@@ -123,11 +123,6 @@ class BedrockLLMProvider(LLMProvider):
             kwargs["system"] = system_parts
         if tools:
             kwargs["toolConfig"] = {"tools": _openai_tools_to_bedrock(tools)}
-        if self.thinking_budget > 0:
-            kwargs["additionalModelRequestFields"] = {
-                "thinking": {"type": "enabled", "budget_tokens": self.thinking_budget}
-            }
-
         resp = client.converse(**kwargs)
         output = resp["output"]["message"]
 
@@ -179,11 +174,6 @@ class BedrockLLMProvider(LLMProvider):
         }
         if system_parts:
             kwargs["system"] = system_parts
-        if self.thinking_budget > 0:
-            kwargs["additionalModelRequestFields"] = {
-                "thinking": {"type": "enabled", "budget_tokens": self.thinking_budget}
-            }
-
         resp = client.converse_stream(**kwargs)
 
         for event in resp["stream"]:

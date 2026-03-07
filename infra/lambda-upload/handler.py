@@ -18,7 +18,7 @@ HTML_FORM = """<!DOCTYPE html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>raskl-rag Upload</title>
+  <title>SwetBot Upload</title>
   <style>
     body { font-family: system-ui, sans-serif; max-width: 480px; margin: 60px auto; padding: 0 20px; }
     h1 { font-size: 1.4em; }
@@ -28,16 +28,27 @@ HTML_FORM = """<!DOCTYPE html>
     .msg { margin-top: 16px; padding: 12px; border-radius: 4px; }
     .ok { background: #d4edda; color: #155724; }
     .err { background: #f8d7da; color: #721c24; }
+    .info { background: #cce5ff; color: #004085; }
+    hr { margin: 24px 0; border: none; border-top: 1px solid #ddd; }
   </style>
 </head>
 <body>
-  <h1>raskl-rag PDF Upload</h1>
+  <h1>SwetBot PDF Upload</h1>
   <form method="post" enctype="multipart/form-data">
     <label>Password</label>
     <input type="password" name="password" required>
     <label>PDF file</label>
     <input type="file" name="file" accept=".pdf" required>
     <button type="submit">Upload</button>
+  </form>
+  <hr>
+  <h2 style="font-size:1.1em;">Reprocess All Documents</h2>
+  <p style="font-size:0.9em; color:#666;">Re-runs the full pipeline (OCR + chunking + embedding) for every PDF.</p>
+  <form method="post">
+    <label>Password</label>
+    <input type="password" name="password" required>
+    <input type="hidden" name="action" value="reprocess_all">
+    <button type="submit" style="background:#dc3545; color:white; border:none; border-radius:4px;">Reprocess All</button>
   </form>
   %(message)s
 </body>
@@ -143,6 +154,45 @@ def _handle_presign(event):
     return _json_response(200, {"upload_url": presigned_url, "s3_key": s3_key})
 
 
+def _parse_form_urlencoded(event):
+    """Parse application/x-www-form-urlencoded body."""
+    body = event.get("body", "")
+    if event.get("isBase64Encoded"):
+        body = base64.b64decode(body).decode("utf-8")
+    return dict(urllib.parse.parse_qsl(body))
+
+
+def _handle_reprocess_all(password):
+    """Copy every PDF in uploads/ to itself, re-triggering the full pipeline."""
+    if not _verify_password(password):
+        return _html_response(403, '<div class="msg err">Invalid password.</div>')
+
+    paginator = s3.get_paginator("list_objects_v2")
+    pdf_keys = []
+    for page in paginator.paginate(Bucket=BUCKET, Prefix="uploads/"):
+        for obj in page.get("Contents", []):
+            if obj["Key"].lower().endswith(".pdf"):
+                pdf_keys.append(obj["Key"])
+
+    if not pdf_keys:
+        return _html_response(200, '<div class="msg info">No PDFs found in uploads/.</div>')
+
+    for key in pdf_keys:
+        s3.copy_object(
+            Bucket=BUCKET,
+            Key=key,
+            CopySource={"Bucket": BUCKET, "Key": key},
+            MetadataDirective="REPLACE",
+            ContentType="application/pdf",
+        )
+
+    return _html_response(
+        200,
+        f'<div class="msg ok">Reprocessing triggered for <strong>{len(pdf_keys)}</strong> PDFs. '
+        f"This will take a while &mdash; each PDF goes through OCR, chunking, and embedding.</div>",
+    )
+
+
 def lambda_handler(event, context):
     method = event.get("requestContext", {}).get("http", {}).get("method", "GET")
     path = event.get("requestContext", {}).get("http", {}).get("path", "/upload")
@@ -154,33 +204,48 @@ def lambda_handler(event, context):
     if method == "GET":
         return _html_response(200)
 
-    # POST: parse form data
-    fields, files = _parse_multipart(event)
+    # POST: check content type to determine form type
+    content_type = event.get("headers", {}).get("content-type", "")
 
-    password = fields.get("password", "")
-    if not _verify_password(password):
-        return _html_response(403, '<div class="msg err">Invalid password.</div>')
+    if "multipart/form-data" in content_type:
+        # File upload form
+        fields, files = _parse_multipart(event)
 
-    file_data = files.get("file")
-    if not file_data:
-        return _html_response(400, '<div class="msg err">No file provided.</div>')
+        # Check if this is a reprocess request (hidden field, no file)
+        if fields.get("action") == "reprocess_all":
+            return _handle_reprocess_all(fields.get("password", ""))
 
-    filename = file_data["filename"]
-    if not filename.lower().endswith(".pdf"):
-        return _html_response(400, '<div class="msg err">Only PDF files are accepted.</div>')
+        password = fields.get("password", "")
+        if not _verify_password(password):
+            return _html_response(403, '<div class="msg err">Invalid password.</div>')
 
-    safe_name = os.path.basename(filename)
-    s3_key = f"uploads/{safe_name}"
+        file_data = files.get("file")
+        if not file_data:
+            return _html_response(400, '<div class="msg err">No file provided.</div>')
 
-    s3.put_object(
-        Bucket=BUCKET,
-        Key=s3_key,
-        Body=file_data["content"],
-        ContentType="application/pdf",
-    )
+        filename = file_data["filename"]
+        if not filename.lower().endswith(".pdf"):
+            return _html_response(400, '<div class="msg err">Only PDF files are accepted.</div>')
 
-    escaped = html.escape(safe_name)
-    return _html_response(
-        200,
-        f'<div class="msg ok">Uploaded <strong>{escaped}</strong> successfully. Processing will begin automatically.</div>',
-    )
+        safe_name = os.path.basename(filename)
+        s3_key = f"uploads/{safe_name}"
+
+        s3.put_object(
+            Bucket=BUCKET,
+            Key=s3_key,
+            Body=file_data["content"],
+            ContentType="application/pdf",
+        )
+
+        escaped = html.escape(safe_name)
+        return _html_response(
+            200,
+            f'<div class="msg ok">Uploaded <strong>{escaped}</strong> successfully. Processing will begin automatically.</div>',
+        )
+
+    # application/x-www-form-urlencoded (reprocess form)
+    fields = _parse_form_urlencoded(event)
+    if fields.get("action") == "reprocess_all":
+        return _handle_reprocess_all(fields.get("password", ""))
+
+    return _html_response(400, '<div class="msg err">Unknown request.</div>')

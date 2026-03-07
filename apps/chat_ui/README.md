@@ -49,26 +49,36 @@ Each user message goes through this process:
 
 ## Key design decisions
 
-### D1 — Strict grounding via system prompt
+### D1 — Grounding via system prompt
 
 **What we chose:** The LLM receives this system prompt (abbreviated):
 
-> Answer ONLY using information from the numbered context passages below.
-> Cite every factual claim using [N] reference numbers.
-> If the context does not contain the answer, say: "The provided documents do not contain
-> information about this."
-> Do NOT use your general knowledge to fill gaps or infer beyond the sources.
-> Preserve original spellings from the source documents.
-> Cite ALL relevant information from the context passages, including biographical notes,
+> Answer the question using the numbered context passages below. Cite every factual claim
+> using [N] references. Preserve original spellings from the source documents.
+> The author citations show surnames only — match to full names in queries by surname.
+> Cite ALL relevant information from context passages, including biographical notes,
 > introductions, and journal entries — all are equally valid sources.
+> If the context passages are insufficient, use the search_documents tool with alternative
+> queries. Do not invent facts. Only state what the sources say.
 
 Temperature is set to 0.3 (not 0). Some variation helps with natural phrasing, but it is kept
 low to prioritise factual consistency.
 
 **Why:** The documents are historical sources — 19th- and 20th-century journals, correspondence,
 and field notes. Hallucinated dates, names, or attributions would be directly harmful to research.
-Strict grounding rules and explicit instructions to say "not found" rather than infer give users
-a clear signal when the collection doesn't contain an answer.
+
+**Why no explicit refusal template:** An earlier version included the instruction "If the context
+does not contain the answer, say: 'The provided documents do not contain information about this.'"
+This caused Qwen3-235B to over-trigger the refusal — when the model had a convenient canned
+refusal phrase, it would refuse even when the context clearly contained the answer (e.g. refusing
+to discuss Abdullah's critique of early Malay accounts because the citation said "Abdullah" and
+the query said "A. Rahman Tang Abdullah"). Removing the template forces the model to actually
+evaluate the context before deciding it cannot answer.
+
+**Why the surname matching rule:** Document metadata often lacks full author names — only
+surnames are available (parsed from filenames like `Abdullah (2011) JMBRAS 84(1), 1-22.pdf`).
+Without the explicit instruction to match by surname, the LLM treats "Abdullah" and "A. Rahman
+Tang Abdullah" as different people and refuses to answer.
 
 **Why the broad citation rule:** An earlier version of the prompt led the LLM to overlook
 biographical notes and introductory sections as "meta" content rather than source material. The

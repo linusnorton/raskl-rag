@@ -1,8 +1,4 @@
 
-# DocProc Pipeline
-
- - Try textract and check quality vs deepseek ocr vs Bedrock Qwen3 VL 235B A22B
-
 # RAG Quality Investigation — Findings & Action Items
 
 ## Root Cause

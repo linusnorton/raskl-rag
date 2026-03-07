@@ -56,9 +56,9 @@ def _run_pipeline(pdf_path: Path, out_dir: Path, max_pages: int | None, page_ran
     from ras_docproc.schema import PageRecord
     from ras_docproc.utils.hashing import page_content_hash, text_hash
 
-    # Auto-detect backend: messy/ → deepseek, otherwise docling
+    # Auto-detect backend: messy/ → qwen3vl, otherwise docling
     if backend is None:
-        backend = "deepseek" if "/messy/" in str(pdf_path) else "docling"
+        backend = "qwen3vl" if "/messy/" in str(pdf_path) else "docling"
 
     config = PipelineConfig(
         pdf_path=pdf_path,

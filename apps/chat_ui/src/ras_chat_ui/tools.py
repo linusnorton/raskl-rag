@@ -67,6 +67,16 @@ def get_tool_definitions(config: ChatConfig) -> list[dict]:
     return tools
 
 
+def _parse_filename_metadata(filename: str) -> tuple[str, str]:
+    """Extract author and year from source_filename like 'Abdullah (2011) JMBRAS 84(1), 1-22.pdf'."""
+    import re
+
+    m = re.match(r"^(.+?)\s*\((\d{4})\)", filename)
+    if m:
+        return m.group(1).strip(), m.group(2)
+    return "", ""
+
+
 def format_chunks_for_context(chunks: list[RetrievedChunk], start_index: int = 1) -> str:
     """Format retrieved chunks as numbered context blocks for the LLM."""
     if not chunks:
@@ -79,15 +89,19 @@ def format_chunks_for_context(chunks: list[RetrievedChunk], start_index: int = 1
         display_end = c.end_page
         pages = f"p.{display_start}" if display_start == display_end else f"pp.{display_start}-{display_end}"
         heading = f" — {c.section_heading}" if c.section_heading else ""
-        author_year = ""
-        if c.author or c.year:
-            parts_ay = []
-            if c.author:
-                parts_ay.append(c.author)
-            if c.year:
-                parts_ay.append(str(c.year))
-            author_year = f" ({', '.join(parts_ay)})"
-        header = f"[{i}] {source}{author_year}, {pages}{heading}"
+        # Use DB metadata, falling back to parsing the source filename
+        fn_author, fn_year = _parse_filename_metadata(c.source_filename)
+        author = c.author or fn_author
+        year = fn_year or (str(c.year) if c.year else "")
+        # Build citation-style header: Author (Year), "Title", pages
+        if author and year:
+            header = f"[{i}] {author} ({year}), \"{source}\", {pages}{heading}"
+        elif author:
+            header = f"[{i}] {author}, \"{source}\", {pages}{heading}"
+        elif year:
+            header = f"[{i}] \"{source}\" ({year}), {pages}{heading}"
+        else:
+            header = f"[{i}] {source}, {pages}{heading}"
         parts.append(f"{header}\n{c.text}")
     return "\n\n".join(parts)
 
