@@ -126,7 +126,10 @@ def run_agent_streaming(
         for tc in tool_calls:
             fn_name = tc["function"]["name"]
             fn_args = tc["function"]["arguments"]
-            result_text, new_chunks = execute_tool_call(fn_name, fn_args, config)
+            result_text, new_chunks = execute_tool_call(fn_name, fn_args, config, start_index=len(all_chunks) + 1)
+            # Deduplicate: only keep chunks not already retrieved
+            existing_ids = {c.chunk_id for c in all_chunks}
+            new_chunks = [c for c in new_chunks if c.chunk_id not in existing_ids]
             all_chunks.extend(new_chunks)
 
             messages.append({

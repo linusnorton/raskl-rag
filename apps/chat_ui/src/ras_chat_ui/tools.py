@@ -106,11 +106,11 @@ def format_chunks_for_context(chunks: list[RetrievedChunk], start_index: int = 1
     return "\n\n".join(parts)
 
 
-def _execute_search_documents(args: dict, config: ChatConfig) -> tuple[str, list[RetrievedChunk]]:
+def _execute_search_documents(args: dict, config: ChatConfig, start_index: int = 1) -> tuple[str, list[RetrievedChunk]]:
     """Execute a document search and return formatted results + raw chunks."""
     query = args["query"]
     chunks = retrieve(query, config)
-    text = format_chunks_for_context(chunks)
+    text = format_chunks_for_context(chunks, start_index=start_index)
     return text, chunks
 
 
@@ -131,12 +131,12 @@ def _execute_web_search(args: dict) -> tuple[str, list[RetrievedChunk]]:
     return "\n\n".join(parts), []
 
 
-def execute_tool_call(name: str, args_json: str, config: ChatConfig) -> tuple[str, list[RetrievedChunk]]:
+def execute_tool_call(name: str, args_json: str, config: ChatConfig, start_index: int = 1) -> tuple[str, list[RetrievedChunk]]:
     """Dispatch a tool call by name. Returns (result_text, retrieved_chunks)."""
     args = json.loads(args_json) if isinstance(args_json, str) else args_json
 
     if name == "search_documents":
-        return _execute_search_documents(args, config)
+        return _execute_search_documents(args, config, start_index=start_index)
     elif name == "web_search":
         return _execute_web_search(args)
     else:
