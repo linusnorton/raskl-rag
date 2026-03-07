@@ -59,22 +59,25 @@ and writes an augmented version forward. The final stage writes JSONL files to d
 
 ## Key design decisions
 
-### D1 — Two extraction backends: Docling vs DeepSeek-OCR
+### D1 — Three extraction backends: Docling, DeepSeek-OCR, Qwen3 VL
 
-**What we chose:** Clean PDFs use [Docling](https://github.com/DS4SD/docling); messy or scanned
-PDFs use [DeepSeek-OCR](https://github.com/deepseek-ai/DeepSeek-VL) via a locally-hosted vLLM
-server.
+**What we chose:** Three backends, each suited to a different deployment:
 
-**Why:** No single tool handles the full range. Docling is fast and gives semantically labelled
-output (headings, paragraphs, tables) but struggles with poor-quality scans. DeepSeek-OCR is a
-vision-language model that reads the page as an image and transcribes it — slower but accurate
-on old, low-contrast, or unevenly-lit document scans.
+- **Docling** — for clean born-digital PDFs. Fast, gives semantically labelled output (headings,
+  paragraphs, tables) but struggles with poor-quality scans.
+- **DeepSeek-OCR** — for messy/scanned PDFs via a locally-hosted vLLM server. A vision-language
+  model that reads the page as an image and transcribes it — slower but accurate on old,
+  low-contrast, or unevenly-lit document scans.
+- **Qwen3 VL** — for messy/scanned PDFs via AWS Bedrock. Uses the Qwen3-VL-235B vision model
+  through the Bedrock Converse API. Pages are rendered as PNG and processed in parallel (default
+  10 workers). This is the backend used by the Lambda deployment.
 
-**Auto-detection:** If the PDF path contains `/messy/`, the pipeline uses DeepSeek; otherwise it
-uses Docling. This can be overridden with `--backend docling|deepseek`.
+**Auto-detection (local):** If the PDF path contains `/messy/`, the pipeline uses DeepSeek;
+otherwise it uses Docling. Override with `--backend docling|deepseek|qwen3vl`.
 
 **Coordinate systems differ:** Docling uses bottom-left origin coordinates; DeepSeek-OCR uses
 0–999 normalised coordinates. The pipeline converts both to a common internal representation.
+Qwen3 VL returns Markdown text without coordinates — blocks are assigned full-page bounding boxes.
 
 ### D2 — Page offset correction
 
@@ -87,6 +90,10 @@ page_offset = last_page_number_on_cover − total_pages_in_pdf
 
 This offset is applied once during the Metadata stage (Stage 4), adjusting the page numbers of
 every block before export.
+
+**Fallback detection:** If the cover page doesn't contain a parseable page range, a fallback
+algorithm samples running page numbers from the second half of the document (to avoid roman
+numerals and unnumbered plates). If 3+ pages agree on the same offset, it is adopted.
 
 **Why baked in, not applied at display time:** If the offset were applied later, every downstream
 consumer (the chunker, the chat UI, the citation renderer) would need to know about it and apply it
@@ -156,6 +163,28 @@ haven't changed. If the PDF content changes, the hash changes and new IDs are pr
 This also means IDs are meaningful at a glance (the slug prefix) while being collision-resistant
 (the hash suffix).
 
+### D6 — AWS Lambda deployment
+
+**What we chose:** An S3-triggered Lambda handler (`lambda_handler.py`) that:
+
+1. Downloads the uploaded PDF from S3 (`uploads/*.pdf`)
+2. Runs the full pipeline using the **Qwen3 VL** backend (Bedrock, no GPU needed)
+3. Uploads versioned JSONL output to `processed/{doc_id}/v{N}/` with a `_meta.json` manifest
+4. Diffs against the previous version (if any) using `diff.py`
+5. Sends an HTML email via AWS SES with a summary of changes (`notify.py`)
+
+Version numbers auto-increment. Each version is a complete snapshot of the pipeline output.
+
+The `processed/{doc_id}/v{N}/documents.jsonl` upload triggers the chunker Lambda downstream
+(see `apps/chunker_indexer/README.md`).
+
+**Why versioned output:** Re-processing the same PDF (e.g. after a pipeline improvement) should
+not silently overwrite previous results. Versioning lets us compare outputs and track quality
+improvements over time.
+
+**`[cloud]` dependency:** The Lambda handler, Qwen3 VL backend, and SES notifications require
+`boto3`, which is an optional `[cloud]` extra in `pyproject.toml`.
+
 ## Output format
 
 All output goes to `data/out/{doc_id}/`:
@@ -180,7 +209,7 @@ All variables use the `DOCPROC_` prefix. The most commonly needed ones:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `DOCPROC_OUT_DIR` | `data` | Root output directory |
-| `DOCPROC_EXTRACTION_BACKEND` | `docling` | `"docling"` or `"deepseek"` |
+| `DOCPROC_EXTRACTION_BACKEND` | `docling` | `"docling"`, `"deepseek"`, or `"qwen3vl"` |
 | `DOCPROC_VLLM_BASE_URL` | `http://localhost:8000` | vLLM server (DeepSeek backend only) |
 | `DOCPROC_BOILERPLATE_THRESHOLD` | `0.3` | Fraction of pages a line must appear on to be boilerplate |
 | `DOCPROC_FOOTER_ZONE_TOP` | `0.80` | Top of footer zone (fraction of page height from top) |
@@ -188,6 +217,13 @@ All variables use the `DOCPROC_` prefix. The most commonly needed ones:
 | `DOCPROC_FOOTNOTE_ZONE_TOP` | `0.72` | Top of footnote zone (fraction of page height from top) |
 | `DOCPROC_MIN_LANG_CHARS` | `30` | Blocks shorter than this get `lang="unknown"` |
 | `DOCPROC_FORCE` | `false` | Re-process even if output already exists for this SHA256 |
+| `DOCPROC_BEDROCK_REGION` | `eu-west-2` | AWS region for Bedrock (Qwen3 VL backend only) |
+| `DOCPROC_BEDROCK_OCR_MODEL_ID` | `qwen.qwen3-vl-235b-a22b` | Bedrock model ID (Qwen3 VL backend only) |
+| `DOCPROC_QWEN3VL_DPI` | `300` | Page rendering DPI (Qwen3 VL backend only) |
+| `DOCPROC_QWEN3VL_MAX_TOKENS` | `4096` | Max tokens per page (Qwen3 VL backend only) |
+| `DOCPROC_QWEN3VL_MAX_WORKERS` | `10` | Max parallel Bedrock calls (Qwen3 VL backend only) |
+| `NOTIFY_EMAIL` | — | Recipient email for SES diff notifications (Lambda only) |
+| `SENDER_EMAIL` | — | Sender email for SES diff notifications (Lambda only) |
 
 See root `CLAUDE.md` for all CLI commands.
 

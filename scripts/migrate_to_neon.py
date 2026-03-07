@@ -136,7 +136,7 @@ def upsert_chunks(conn: psycopg.Connection, chunks: list[dict], embeddings: list
 def main():
     parser = argparse.ArgumentParser(description="Migrate local DB chunks to Neon with Bedrock embeddings")
     parser.add_argument("--neon-dsn", required=False, help="Neon database DSN")
-    parser.add_argument("--local-db", default="raskl_rag_light", help="Local database name (default: raskl_rag_light)")
+    parser.add_argument("--local-db", default="raskl_rag", help="Local database name (default: raskl_rag)")
     parser.add_argument("--doc-id", help="Migrate only this document (default: all)")
     parser.add_argument("--dry-run", action="store_true", help="Count chunks without writing")
     parser.add_argument("--batch-size", type=int, default=50, help="Embedding batch size (default: 50)")

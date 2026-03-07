@@ -40,8 +40,8 @@ Each user message goes through this process:
 
 1. **Embed the query** — convert the question text to a 1024-dimension vector
 2. **Hybrid search** — fetch up to 30 candidate passages via vector + full-text RRF search
-3. **Rerank** — score all 30 candidates against the query; keep top 10
-4. **Build prompt** — insert context passages as numbered `[1]...[10]` blocks into the system prompt
+3. **Rerank** — score all 30 candidates against the query; keep top 15
+4. **Build prompt** — insert context passages as numbered `[1]...[15]` blocks into the system prompt
 5. **Trim to context budget** — drop lowest-scoring chunks if the prompt would exceed the LLM's context window
 6. **Tool-calling loop** — LLM may call `search_documents` or `web_search` up to 5 times for additional context
 7. **Stream final answer** — stream the LLM response to the UI
@@ -81,13 +81,24 @@ answer. Two tools are available:
 
 - **`search_documents`** — performs another hybrid search with a new query string. The results
   are added to the conversation context.
-- **`web_search`** — searches DuckDuckGo for general knowledge outside the indexed collection
-  (enabled by default, can be disabled via `CHAT_WEB_SEARCH_ENABLED=false`).
+- **`web_search`** — searches DuckDuckGo (top 5 results) for general knowledge outside the
+  indexed collection (enabled by default, can be disabled via `CHAT_WEB_SEARCH_ENABLED=false`).
 
-The context budget is managed dynamically: before each tool round, the system checks whether
-the accumulated context would overflow the LLM's context window. If it would, the lowest-ranked
-chunks are dropped to make room. If not even that is enough, the loop stops early and the LLM
-is asked to give a final answer with what it has.
+**Streaming split:** Tool rounds run in non-streaming mode (the LLM must return tool calls as
+complete JSON). Only the final answer — after all tool rounds — is streamed to the UI. This
+means users see a brief pause during tool execution, then the answer streams in.
+
+**Context budget management:** Three mechanisms keep the prompt within the LLM's context window:
+
+1. **Pre-loop trimming:** Before the tool loop starts, the lowest-relevance chunks are dropped
+   if the initial retrieval results would overflow the budget.
+2. **Per-round check:** Before each tool round, the system checks whether accumulated context
+   fits. If it doesn't, lowest-ranked chunks are dropped.
+3. **Post-loop cleanup:** If context is nearly full after tool rounds, the oldest
+   assistant + tool message pairs are deleted to make room for the final streaming response.
+
+The context budget formula reserves space for both output and thinking tokens:
+`max_tokens = min(llm_max_tokens + llm_thinking_budget, available - 64)`.
 
 **Why an agent loop:** Initial retrieval might not find the best passages if the user's question
 uses different phrasing from the document text. The LLM can recognise this from the retrieved
@@ -101,7 +112,7 @@ questions.
 
 - **Stage 1:** Fetch 30 candidates via hybrid RRF search (vector + full-text, see
   `apps/chunker_indexer/README.md` D4 for the full explanation of the search algorithm)
-- **Stage 2:** Score all 30 candidates with a reranker model, return the top 10
+- **Stage 2:** Score all 30 candidates with a reranker model, return the top 15
 
 Each candidate sent to the reranker is prefixed with document metadata:
 ```
@@ -181,8 +192,11 @@ environment variables change between deployments.
 `additionalModelRequestFields.thinking` to the Bedrock Converse API, enabling the model to
 reason through dates, facts, and cross-references before producing its answer.
 
-The token budget calculation in `agent.py` reserves space for thinking tokens alongside the
-output tokens, so the context window isn't overflowed.
+Thinking tokens and output tokens share the same `max_tokens` budget — the context budget
+formula adds them together (`llm_max_tokens + llm_thinking_budget`) and reserves that total
+from the available context window. During streaming, reasoning tokens and content tokens arrive
+in separate fields and are rendered independently (reasoning as a collapsible block, content
+as the main answer).
 
 **Why:** Without thinking mode, Qwen3 on Bedrock would not carefully parse dates and facts from
 context passages. In testing, the model confused "6th October" with dates from adjacent section
@@ -252,7 +266,7 @@ Key environment variables (prefix `CHAT_`):
 
 | Variable | Default | Notes |
 |----------|---------|-------|
-| `CHAT_RETRIEVAL_TOP_K` | `10` | Final passages returned to LLM after reranking |
+| `CHAT_RETRIEVAL_TOP_K` | `15` | Final passages returned to LLM after reranking |
 
 ### AWS Bedrock (cloud deployment)
 
@@ -270,7 +284,7 @@ Key environment variables (prefix `CHAT_`):
 
 | Variable | Default | Notes |
 |----------|---------|-------|
-| `CHAT_DB_NAME` | `raskl_rag` | `raskl_rag_light` for light stack |
+| `CHAT_DB_NAME` | `raskl_rag` | PostgreSQL database name |
 | `CHAT_DATABASE_DSN` | _(empty)_ | Override full connection string (e.g. Neon serverless) |
 
 ### Other

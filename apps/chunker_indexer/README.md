@@ -184,11 +184,9 @@ query-type inputs. The prefix tells the model which mode to use, and the model e
 and queries into compatible but non-identical vector spaces optimised for retrieval. Omitting the
 prefix or using the wrong prefix measurably reduces retrieval quality with this model family.
 
-**BGE-M3 exception:** When using the light stack (BGE-M3), both prefixes are set to empty string
-(`""`). BGE-M3 is trained for zero-shot retrieval without task instructions and adding a prefix
-actually degrades its performance. The chunker's `CHUNKER_EMBED_TASK_PREFIX` must match whatever
-prefix was used when the collection was indexed — mixing prefixes between indexing and query time
-will produce poor results.
+**Bedrock Titan Embed v2:** Task prefixes are set to empty string (`""`) when using Bedrock. The
+chunker's `CHUNKER_EMBED_TASK_PREFIX` must match whatever prefix was used when the collection was
+indexed — mixing prefixes between indexing and query time will produce poor results.
 
 ### D7 — Page offset stored but not re-applied
 
@@ -204,51 +202,41 @@ pages 76–100 in a 151-page PDF (offset = −51) would display page 25 instead 
 The fix: `page_offset` is retained in the database as an audit record (so we know what was
 applied), but display code must use `start_page` directly without adding the offset again.
 
-### D8 — Pluggable embedding backend
+### D8 — Bedrock embedding
 
-**What we chose:** An `EmbedProvider` abstract class with two implementations:
-- `VLLMEmbedProvider` — calls a local vLLM server's OpenAI-compatible embeddings endpoint
-- `BedrockEmbedProvider` — calls AWS Bedrock (Amazon Titan Embed Text v2 or Cohere Embed) via boto3
+**What we chose:** Embedding uses AWS Bedrock (Amazon Titan Embed Text v2) via boto3. Titan
+embeds one text per API call; the provider uses a `ThreadPoolExecutor` (10 workers) to embed
+chunks concurrently.
 
-Selected via `CHUNKER_EMBED_PROVIDER="vllm"` (default) or `"bedrock"`.
-
-**Why:** Local vLLM avoids cloud costs and keeps data private, but requires a GPU. AWS Bedrock
-requires no local hardware but incurs API costs. The same codebase supports both deployments
-without changes.
+Selected via `CHUNKER_EMBED_PROVIDER="bedrock"`.
 
 **Important:** The embedding model used by the chunker must match the model used by the chat UI's
-retriever. If you re-index with a different model, you must also restart the chat UI with the
-matching model. Mixing models produces silently poor retrieval because vectors from different
-models are not comparable.
+retriever. Both must use the same Bedrock model ID. Mixing models produces silently poor
+retrieval because vectors from different models are not comparable.
 
-## Two tested model stacks
+### D9 — AWS Lambda deployment
 
-Two hardware configurations have been fully tested end-to-end:
+**What we chose:** An S3-triggered Lambda handler (`lambda_handler.py`) that listens for
+`processed/{doc_id}/v{N}/documents.jsonl` uploads from the docproc Lambda. On trigger, it:
 
-### Heavy stack
+1. Downloads all JSONL files for that version from S3
+2. Runs the full chunk + embed + index pipeline
+3. Upserts into Neon (the cloud PostgreSQL database)
 
-Designed for a high-end single GPU (e.g. RTX 5090 with 32GB VRAM):
+The version number from the S3 key is passed through to `upsert_chunks()` for audit tracking.
 
-| Component | Model | Where it runs |
-|-----------|-------|---------------|
-| Chat LLM | `Qwen/Qwen3-30B-A3B-GPTQ-Int4` (30B MoE, 3B active, ~15.6GB VRAM) | GPU |
-| Embedding | `Qwen3-Embedding-8B` | CPU (doesn't fit on GPU alongside chat model) |
-| Reranker | `Qwen3-Reranker-8B` | CPU |
+**`[cloud]` dependency:** The Lambda handler requires `boto3`, which is an optional `[cloud]`
+extra in `pyproject.toml`.
 
-Database: `raskl_rag`. Launch: `./scripts/start-chat.sh`.
+### D10 — Chunk change auditing
 
-### Light stack
+**What we chose:** A `chunk_changes` table that records what changed each time a document is
+re-indexed. Each row captures: `doc_id`, `version`, `chunks_total`, `chunks_added`,
+`chunks_removed`, `chunks_text_changed`, and `chunks_unchanged`.
 
-Designed for a mid-range GPU (e.g. RTX 3090 / 4090 with ~16GB VRAM):
-
-| Component | Model | Where it runs |
-|-----------|-------|---------------|
-| Chat LLM | `Qwen/Qwen3-8B-AWQ` (~5GB VRAM) | GPU |
-| Embedding | `BAAI/bge-m3` (~1.1GB VRAM) | GPU |
-| Reranker | `BAAI/bge-reranker-v2-m3` (~1.1GB VRAM) | GPU |
-
-BGE-M3 uses empty task prefixes. Model paths use the local format `./models/BAAI--bge-m3`
-(not `BAAI/bge-m3`). Database: `raskl_rag_light`. Launch: `./scripts/start-chat-light.sh`.
+**Why:** When re-processing a PDF (e.g. after improving the OCR pipeline), it's useful to know
+how many chunks actually changed. This audit trail helps measure whether pipeline improvements
+are producing different (hopefully better) output, and by how much.
 
 ## Database schema
 
@@ -277,6 +265,18 @@ CREATE TABLE chunks (
     embedding       vector(1024) NOT NULL,
     indexed_at      TIMESTAMPTZ DEFAULT now()
 );
+
+CREATE TABLE chunk_changes (
+    id              SERIAL PRIMARY KEY,
+    doc_id          TEXT NOT NULL,
+    version         INTEGER NOT NULL,
+    indexed_at      TIMESTAMPTZ DEFAULT now(),
+    chunks_total    INTEGER NOT NULL,
+    chunks_added    INTEGER NOT NULL DEFAULT 0,
+    chunks_removed  INTEGER NOT NULL DEFAULT 0,
+    chunks_text_changed INTEGER NOT NULL DEFAULT 0,
+    chunks_unchanged INTEGER NOT NULL DEFAULT 0
+);
 ```
 
 ## Configuration
@@ -285,13 +285,14 @@ Key environment variables (prefix `CHUNKER_`):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CHUNKER_EMBED_PROVIDER` | `vllm` | `"vllm"` or `"bedrock"` |
-| `CHUNKER_EMBED_MODEL` | `./models/Qwen--Qwen3-Embedding-8B` | Model path or Bedrock model ID |
-| `CHUNKER_EMBED_TASK_PREFIX` | `"Represent this document passage for retrieval: "` | Must match chunker embed prefix |
+| `CHUNKER_EMBED_PROVIDER` | `bedrock` | `"bedrock"` (or `"vllm"` for legacy local use) |
+| `CHUNKER_EMBED_TASK_PREFIX` | `""` | Must match chat UI embed prefix |
 | `CHUNKER_MAX_CHUNK_TOKENS` | `512` | Maximum tokens per chunk |
 | `CHUNKER_RESTITCH_ENABLED` | `true` | Enable cross-page paragraph merging |
 | `CHUNKER_DB_NAME` | `raskl_rag` | PostgreSQL database name |
-| `CHUNKER_DATABASE_DSN` | _(empty)_ | Override full connection string |
+| `CHUNKER_DATABASE_DSN` | _(empty)_ | Override full connection string (e.g. Neon DSN) |
+| `CHUNKER_BEDROCK_REGION` | `eu-west-2` | AWS region for Bedrock (bedrock provider only) |
+| `CHUNKER_BEDROCK_EMBED_MODEL_ID` | `amazon.titan-embed-text-v2:0` | Bedrock embedding model ID |
 
 See root `CLAUDE.md` for all CLI commands.
 

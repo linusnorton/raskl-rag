@@ -279,7 +279,8 @@ def _run_one(args: tuple) -> tuple[str, str | None]:
 @click.option("--out-dir", default="data", type=click.Path(path_type=Path), help="Output directory")
 @click.option("--force", is_flag=True, help="Force re-processing even if output exists")
 @click.option("--workers", default=None, type=int, help="Number of parallel workers (default: CPU count)")
-def run_all(docs_dir: Path, out_dir: Path, force: bool, workers: int | None) -> None:
+@click.option("--backend", default=None, type=click.Choice(["docling", "deepseek", "qwen3vl"]), help="Extraction backend (auto-detects if not set)")
+def run_all(docs_dir: Path, out_dir: Path, force: bool, workers: int | None, backend: str | None) -> None:
     """Process all PDFs in a directory in parallel."""
     import os
     from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -294,7 +295,7 @@ def run_all(docs_dir: Path, out_dir: Path, force: bool, workers: int | None) -> 
 
     console.print(f"Found [bold]{len(pdfs)}[/] PDFs, processing with {workers} workers\n")
 
-    args_list = [(pdf, out_dir, force, None) for pdf in pdfs]
+    args_list = [(pdf, out_dir, force, backend) for pdf in pdfs]
 
     succeeded = 0
     failed: list[tuple[str, str]] = []

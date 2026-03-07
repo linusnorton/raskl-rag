@@ -109,13 +109,13 @@ infra/
 
 ### DocProc Lambda (`raskl-docproc`)
 
-- **Container**: `docker/docproc/Dockerfile` — Docling + PyMuPDF + chunker + Bedrock embed
+- **Container**: `docker/docproc/Dockerfile` — Qwen3 VL (Bedrock) + PyMuPDF + chunker + Bedrock embed
 - **Memory**: 8192 MB
 - **Timeout**: 900s (15 min)
 - **Trigger**: S3 event on `uploads/*.pdf`
 - **Estimated image**: ~2-3 GB, cold start ~30-60s
-- Pipeline: download PDF → docproc (Docling) → chunk → embed (Bedrock Titan Embed v2) → index (Neon) → upload JSONL to S3
-- Docling only — no GPU for DeepSeek-OCR in Lambda. Messy PDFs must be processed locally.
+- Pipeline: download PDF → docproc (Qwen3 VL via Bedrock) → upload versioned JSONL to S3 → diff + SES email → Chunker Lambda triggers on JSONL → chunk + embed (Bedrock Titan Embed v2) → index (Neon)
+- All PDFs (clean and scanned) use the same Qwen3 VL backend.
 
 ### Upload Lambda (`raskl-upload`)
 
@@ -167,7 +167,7 @@ CHUNKER_BEDROCK_EMBED_MODEL_ID=amazon.titan-embed-text-v2:0
 CHUNKER_DATABASE_DSN=postgresql://...@...neon.tech/raskl_rag?sslmode=require
 ```
 
-For local development, defaults remain unchanged (`vllm`, `sentence-transformers`, `qwen3`).
+For local development, set `AWS_PROFILE=linusnorton` and use the same Bedrock providers (see `scripts/lib.sh`).
 
 ## Initial Deployment
 
@@ -287,7 +287,7 @@ Upload PDFs to S3 to trigger the DocProc Lambda (Docling → chunk → Bedrock e
 aws s3 cp "docs/clean/paper.pdf" "s3://$(terraform output -raw s3_bucket)/uploads/paper.pdf"
 ```
 
-Messy PDFs that need DeepSeek-OCR must be processed locally first, then migrated via the script above.
+All PDFs (clean and scanned) are processed with Qwen3 VL via Bedrock — no separate messy/clean workflow.
 
 ## Neon Database
 

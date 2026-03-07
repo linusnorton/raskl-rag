@@ -8,13 +8,12 @@ Gradio chat interface.
 
 ```
 apps/
-  docproc/          PDF → structured JSONL (text, footnotes, figures, metadata)
+  docproc/          PDF → structured JSONL (Qwen3 VL via Bedrock)
   chunker_indexer/  JSONL → chunks → embeddings → PostgreSQL/pgvector
-  vllm_launcher/    Start/stop vLLM model servers, download models
   chat_ui/          Gradio chat interface with agentic RAG search
 infra/              Terraform for AWS serverless deployment
 docker/             Dockerfiles for Lambda containers
-scripts/            Shell scripts for common workflows
+scripts/            Shell scripts for local development workflows
 ```
 
 Each app has a README with design decisions and rationale:
@@ -29,115 +28,56 @@ See [`CLAUDE.md`](CLAUDE.md) for all individual commands.
 
 ```bash
 # Requires Python 3.11+ and uv (https://docs.astral.sh/uv/)
+# Requires AWS credentials with Bedrock access
 uv sync --all-packages
 ```
 
-## Two local stacks
+## Local development
 
-There are two tested local configurations depending on available GPU memory.
-
-### Heavy stack — RTX 5090 / 32GB VRAM
-
-Chat model: Qwen3-30B-A3B-GPTQ-Int4 (~16GB VRAM). Embedding and reranking run on CPU.
+Local Gradio UI and PostgreSQL, with all model inference via AWS Bedrock. No GPU needed.
 
 **Step 1 — Process PDFs**
 
 ```bash
-# Clean born-digital PDFs (parallel, Docling backend, no GPU needed)
-./scripts/docproc-clean.sh
+# Process all PDFs (Qwen3 VL via Bedrock, parallel)
+./scripts/docproc.sh
 
-# Scanned/messy PDFs (sequential, DeepSeek-OCR via vLLM, needs GPU)
-./scripts/docproc-messy.sh
+# Single PDF
+uv run ras-docproc run --pdf "path/to/file.pdf" --backend qwen3vl
 ```
 
-**Step 2 — Download models**
-
-```bash
-uv run ras-vllm-launcher download --role all
-```
-
-**Step 3 — Embed and index**
+**Step 2 — Embed and index**
 
 ```bash
 ./scripts/embed.sh
 ```
 
-Starts PostgreSQL, initialises the schema, launches the Qwen3-Embedding vLLM server, indexes all
-processed documents, then shuts down the embedding server.
+Starts local PostgreSQL, initialises the schema, and indexes all processed documents using
+Bedrock Titan Embed v2.
 
-**Step 4 — Start the chat UI**
+**Step 3 — Start the chat UI**
 
 ```bash
 ./scripts/start-chat.sh
 ```
 
-Starts PostgreSQL, the Qwen3-30B chat model via vLLM (port 8002), and the Gradio UI (port 7860).
-The embedding and reranker models load on CPU on first query (~30–40s).
+Starts local PostgreSQL and the Gradio UI on port 7860. LLM, embedding, and reranking all
+run via Bedrock.
 
 ---
 
-### Light stack — RTX 3090/4090 / ~16GB VRAM
+## Serverless deployment (AWS)
 
-Chat model: Qwen3-8B-AWQ (~5GB). Embedding (BGE-M3) and reranker (BGE-Reranker-v2-m3) on GPU
-(~1.1GB each). Total ~16GB with `gpu-memory-utilization=0.45`. Uses a separate database
-(`raskl_rag_light`).
+Upload a PDF → DocProc Lambda (Qwen3 VL) → versioned JSONL to S3 → Chunker Lambda
+(Bedrock Titan Embed) → Neon pgvector → Chat Lambda (Gradio + Bedrock).
 
-**Step 1 — Process PDFs** (same as heavy stack above)
+See [`DEPLOYMENT.md`](DEPLOYMENT.md) for full details. The serverless stack uses:
 
-**Step 2 — Download models**
-
-```bash
-uv run ras-vllm-launcher download --role all-light
-```
-
-**Step 3 — Embed and index**
-
-```bash
-./scripts/embed-light.sh
-# Skip model download if already done:
-./scripts/embed-light.sh --skip-download
-```
-
-**Step 4 — Start the chat UI**
-
-```bash
-./scripts/start-chat-light.sh
-```
-
----
-
-### Cloud stack — AWS Bedrock + Neon
-
-No local GPU needed. All model inference runs on AWS Bedrock; the database is Neon (serverless
-PostgreSQL). This is the stack used by the Lambda deployment, but can also be run locally for
-development/testing.
-
-**Step 1 — Process PDFs** (same as local stacks above)
-
-**Step 2 — Embed and index into Neon**
-
-If you have an existing local database (from the heavy or light stack), migrate chunks to Neon
-with re-embedding:
-
-```bash
-# Dry run
-uv run python scripts/migrate_to_neon.py --dry-run
-
-# Full migration (re-embeds with Bedrock Titan Embed v2)
-AWS_PROFILE=linusnorton uv run python scripts/migrate_to_neon.py \
-  --neon-dsn "postgresql://...@...neon.tech/raskl_rag?sslmode=require"
-```
-
-**Step 3 — Run chat UI locally against Bedrock + Neon**
-
-```bash
-CHAT_LLM_PROVIDER=bedrock CHAT_EMBED_PROVIDER=bedrock CHAT_RERANK_PROVIDER=bedrock \
-CHAT_DATABASE_DSN="postgresql://...@...neon.tech/raskl_rag?sslmode=require" \
-CHAT_EMBED_TASK_PREFIX="" CHAT_LLM_THINKING_BUDGET=2048 \
-AWS_PROFILE=linusnorton uv run ras-chat-ui
-```
-
-See [`DEPLOYMENT.md`](DEPLOYMENT.md) for the full serverless Lambda deployment.
+- AWS Lambda (chat + docproc + upload) with Bedrock for all model inference
+- Neon (serverless PostgreSQL + pgvector)
+- S3 for PDF upload and docproc output
+- Terraform in `infra/` to provision everything
+- GitHub Actions for deploy-on-push and per-PR preview environments
 
 ---
 
@@ -151,8 +91,6 @@ uv run python scripts/diagnose_rag.py --query "What dates did Swettenham go to S
 uv run python scripts/migrate_to_neon.py --dry-run
 ```
 
----
-
 ## HTML debug reports
 
 After running docproc, inspect extraction results with an interactive HTML report:
@@ -160,16 +98,6 @@ After running docproc, inspect extraction results with an interactive HTML repor
 ```bash
 uv run ras-docproc report --doc-id DOC_ID --pages 1,5,10
 ```
-
-## Serverless deployment (AWS)
-
-See [`DEPLOYMENT.md`](DEPLOYMENT.md) for full details. The serverless stack uses:
-
-- AWS Lambda (chat + docproc) with Bedrock for all model inference
-- Neon (serverless PostgreSQL + pgvector)
-- S3 for PDF upload and docproc output
-- Terraform in `infra/` to provision everything
-- GitHub Actions for deploy-on-push and per-PR preview environments
 
 ## Testing
 

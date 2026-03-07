@@ -6,10 +6,6 @@ requires-python = ">=3.11"
 [tool.uv.workspace]
 members = ["apps/*"]
 
-[[tool.uv.index]]
-name = "vllm-nightly"
-url = "https://wheels.vllm.ai/nightly"
-
 [tool.ruff]
 line-length = 120
 target-version = "py311"
