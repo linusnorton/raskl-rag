@@ -5,7 +5,10 @@ from __future__ import annotations
 import re
 from collections.abc import Generator
 
+import os
+
 import gradio as gr
+import gradio.networking
 
 from .agent import run_agent_streaming
 from .config import ChatConfig
@@ -132,6 +135,11 @@ def main() -> None:
         description="Ask questions about JMBRAS and Swettenham historical documents.",
     )
     auth = ("raskl", config.gradio_password) if config.gradio_password else None
+    # In Lambda, Gradio's self-connectivity check fails because the server isn't
+    # reachable via localhost during cold start. Skip the check — the Lambda Web
+    # Adapter handles readiness via AWS_LWA_READINESS_CHECK_PATH instead.
+    if os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+        gradio.networking.url_ok = lambda url: True
     demo.launch(
         server_name="0.0.0.0",
         server_port=config.gradio_port,
