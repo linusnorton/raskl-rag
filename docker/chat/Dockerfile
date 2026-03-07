@@ -13,12 +13,10 @@ COPY pyproject.toml uv.lock ./
 COPY apps/chat_ui/ apps/chat_ui/
 COPY apps/docproc/pyproject.toml apps/docproc/pyproject.toml
 COPY apps/chunker_indexer/pyproject.toml apps/chunker_indexer/pyproject.toml
-COPY apps/vllm_launcher/pyproject.toml apps/vllm_launcher/pyproject.toml
 
 # Stub out other workspace members so uv resolves without their source
 RUN mkdir -p apps/docproc/src/ras_docproc && touch apps/docproc/src/ras_docproc/__init__.py
 RUN mkdir -p apps/chunker_indexer/src/ras_chunker && touch apps/chunker_indexer/src/ras_chunker/__init__.py
-RUN mkdir -p apps/vllm_launcher/src/ras_vllm_launcher && touch apps/vllm_launcher/src/ras_vllm_launcher/__init__.py
 
 # Install chat_ui with cloud dependencies
 RUN uv sync --package ras-chat-ui --extra cloud --no-dev --frozen
