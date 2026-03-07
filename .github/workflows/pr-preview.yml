@@ -101,7 +101,7 @@ jobs:
         with:
           script: |
             const url = '${{ steps.deploy.outputs.url }}';
-            const body = `### Preview deployed\n\nChat UI: ${url}\n\n_Updated at ${new Date().toISOString()}_`;
+            const body = `### Preview deployed\n\nRAG API: ${url}v1/models\n\n_Updated at ${new Date().toISOString()}_`;
 
             // Find existing preview comment
             const comments = await github.rest.issues.listComments({

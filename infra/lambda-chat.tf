@@ -1,4 +1,4 @@
-# --- Chat Lambda (Gradio + Lambda Web Adapter) ---
+# --- RAG API Lambda (FastAPI + Lambda Web Adapter) ---
 
 resource "aws_lambda_function" "chat" {
   function_name = "${local.prefix}-chat"
@@ -33,17 +33,18 @@ resource "aws_lambda_function" "chat" {
       # Database (Neon)
       CHAT_DATABASE_DSN = local.neon_dsn
 
-      # Gradio
-      CHAT_GRADIO_PORT = "7860"
+      # API server
+      CHAT_API_PORT = "8000"
+      CHAT_API_KEY  = ""
 
       # Web search enabled (no VPC = direct internet)
       CHAT_WEB_SEARCH_ENABLED = "true"
 
       # Lambda Web Adapter
-      AWS_LWA_INVOKE_MODE    = "buffered"
-      AWS_LWA_READINESS_CHECK_PATH = "/"
-      AWS_LWA_INIT_BINARY    = "/opt/extensions/lambda-adapter"
-      PORT                   = "7860"
+      AWS_LWA_INVOKE_MODE          = "response_stream"
+      AWS_LWA_READINESS_CHECK_PATH = "/v1/models"
+      AWS_LWA_INIT_BINARY          = "/opt/extensions/lambda-adapter"
+      PORT                         = "8000"
 
       # uv cache (Lambda filesystem is read-only except /tmp)
       UV_CACHE_DIR = "/tmp/uv-cache"
@@ -54,4 +55,3 @@ resource "aws_lambda_function" "chat" {
     ignore_changes = [image_uri]
   }
 }
-

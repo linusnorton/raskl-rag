@@ -11,5 +11,23 @@ services:
       - pgdata:/var/lib/postgresql/data
       - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-light.sql:ro
 
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    ports:
+      - "3000:8080"
+    environment:
+      # Connect to the RAG API (running on host via ./scripts/start-api.sh)
+      OPENAI_API_BASE_URLS: "${OPENAI_API_BASE_URLS:-http://host.docker.internal:8000/v1}"
+      OPENAI_API_KEYS: "${CHAT_API_KEY:-unused}"
+      # Disable Ollama (we only use the OpenAI-compatible backend)
+      ENABLE_OLLAMA_API: "false"
+      # Disable signup — single user mode
+      WEBUI_AUTH: "false"
+    volumes:
+      - open-webui-data:/app/backend/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
 volumes:
   pgdata:
+  open-webui-data:
