@@ -6,7 +6,9 @@ import re
 from collections.abc import Generator
 
 import os
+import secrets
 
+import fastapi
 import gradio as gr
 import gradio.networking
 
@@ -134,7 +136,34 @@ def main() -> None:
         title="SwetBot",
         description="Ask questions about JMBRAS and Swettenham historical documents.",
     )
-    auth = ("swetbot", config.gradio_password) if config.gradio_password else None
+    # Use HTTP Basic Auth via auth_dependency — stateless, so it works across
+    # Lambda cold starts (Gradio's built-in auth uses in-memory tokens which are
+    # lost when a new Lambda instance starts).
+    auth_dep = None
+    if config.gradio_password:
+        expected_user = "swetbot"
+        expected_pass = config.gradio_password
+
+        def _check_basic_auth(request: fastapi.Request) -> str | None:
+            auth = request.headers.get("Authorization", "")
+            if auth.startswith("Basic "):
+                import base64
+                try:
+                    decoded = base64.b64decode(auth[6:]).decode()
+                    user, password = decoded.split(":", 1)
+                except Exception:
+                    pass
+                else:
+                    if secrets.compare_digest(user, expected_user) and secrets.compare_digest(password, expected_pass):
+                        return user
+            # Trigger browser's native login dialog
+            raise fastapi.HTTPException(
+                status_code=401,
+                headers={"WWW-Authenticate": 'Basic realm="SwetBot"'},
+            )
+
+        auth_dep = _check_basic_auth
+
     # In Lambda, Gradio's self-connectivity check fails because the server isn't
     # reachable via localhost during cold start. Skip the check — the Lambda Web
     # Adapter handles readiness via AWS_LWA_READINESS_CHECK_PATH instead.
@@ -144,7 +173,7 @@ def main() -> None:
         server_name="0.0.0.0",
         server_port=config.gradio_port,
         share=config.gradio_share,
-        auth=auth,
+        auth_dependency=auth_dep,
     )
 
 
