@@ -131,10 +131,10 @@ def main() -> None:
     demo = gr.ChatInterface(
         fn=_make_chat_fn(config),
         chatbot=chatbot,
-        title="raskl-rag Chat",
+        title="SwetBot",
         description="Ask questions about JMBRAS and Swettenham historical documents.",
     )
-    auth = ("raskl", config.gradio_password) if config.gradio_password else None
+    auth = ("swetbot", config.gradio_password) if config.gradio_password else None
     # In Lambda, Gradio's self-connectivity check fails because the server isn't
     # reachable via localhost during cold start. Skip the check — the Lambda Web
     # Adapter handles readiness via AWS_LWA_READINESS_CHECK_PATH instead.
