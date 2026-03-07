@@ -16,6 +16,12 @@ variable "upload_password_hash" {
   sensitive   = true
 }
 
+variable "chat_api_key" {
+  description = "Bearer token for RAG API authentication"
+  type        = string
+  sensitive   = true
+}
+
 # --- Bedrock Model IDs (swap models without code changes) ---
 
 variable "chat_model_id" {

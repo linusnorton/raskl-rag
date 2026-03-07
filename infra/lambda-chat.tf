@@ -35,7 +35,7 @@ resource "aws_lambda_function" "chat" {
 
       # API server
       CHAT_API_PORT = "8000"
-      CHAT_API_KEY  = ""
+      CHAT_API_KEY  = var.chat_api_key
 
       # Web search enabled (no VPC = direct internet)
       CHAT_WEB_SEARCH_ENABLED = "true"

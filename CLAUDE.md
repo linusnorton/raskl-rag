@@ -8,7 +8,6 @@ Monorepo for processing historical JMBRAS/Swettenham PDFs into structured JSONL 
 - `apps/chunker_indexer/` — Chunk + index JSONL into PostgreSQL/pgvector (`ras-chunker`)
 - `apps/rag_engine/` — OpenAI-compatible RAG API with FastAPI (`ras-rag-engine`)
 - `infra/` — Terraform for AWS serverless deployment (Lambda, Neon, S3, ECR, App Runner)
-- `docker/` — Dockerfiles for Lambda containers (`api/`, `docproc/`, `chunker/`)
 - `.github/workflows/` — CI/CD (deploy on push to master, PR chat previews)
 
 ## Two modes of operation

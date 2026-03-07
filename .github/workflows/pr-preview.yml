@@ -33,7 +33,7 @@ jobs:
         run: |
           TAG="pr-${{ github.event.pull_request.number }}"
           IMAGE="${{ steps.ecr-login.outputs.registry }}/raskl-chat:${TAG}"
-          docker build -f docker/chat/Dockerfile -t "$IMAGE" .
+          docker build -f apps/rag_engine/Dockerfile -t "$IMAGE" .
           docker push "$IMAGE"
           echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"

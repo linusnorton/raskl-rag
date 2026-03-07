@@ -109,7 +109,7 @@ infra/
 
 ### DocProc Lambda (`raskl-docproc`)
 
-- **Container**: `docker/docproc/Dockerfile` — Qwen3 VL (Bedrock) + PyMuPDF + chunker + Bedrock embed
+- **Container**: `apps/docproc/Dockerfile` — Qwen3 VL (Bedrock) + PyMuPDF + chunker + Bedrock embed
 - **Memory**: 8192 MB
 - **Timeout**: 900s (15 min)
 - **Trigger**: S3 event on `uploads/*.pdf`
@@ -190,11 +190,11 @@ python3 -c "import hashlib; print(hashlib.sha256(input('Password: ').encode()).h
 aws ecr get-login-password --region eu-west-2 | docker login --username AWS --password-stdin ACCOUNT_ID.dkr.ecr.eu-west-2.amazonaws.com
 
 # Build chat image
-docker build -f docker/chat/Dockerfile -t ACCOUNT_ID.dkr.ecr.eu-west-2.amazonaws.com/raskl-chat:latest .
+docker build -f apps/rag_engine/Dockerfile -t ACCOUNT_ID.dkr.ecr.eu-west-2.amazonaws.com/raskl-chat:latest .
 docker push ACCOUNT_ID.dkr.ecr.eu-west-2.amazonaws.com/raskl-chat:latest
 
 # Build docproc image
-docker build -f docker/docproc/Dockerfile -t ACCOUNT_ID.dkr.ecr.eu-west-2.amazonaws.com/raskl-docproc:latest .
+docker build -f apps/docproc/Dockerfile -t ACCOUNT_ID.dkr.ecr.eu-west-2.amazonaws.com/raskl-docproc:latest .
 docker push ACCOUNT_ID.dkr.ecr.eu-west-2.amazonaws.com/raskl-docproc:latest
 ```
 

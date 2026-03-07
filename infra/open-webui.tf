@@ -63,10 +63,10 @@ resource "aws_apprunner_service" "open_webui" {
         port = "8080"
 
         runtime_environment_variables = {
-          OPENAI_API_BASE_URLS  = trimsuffix(aws_apigatewayv2_stage.default.invoke_url, "/") + "/v1"
-          OPENAI_API_KEYS       = "unused"
+          OPENAI_API_BASE_URLS  = "${trimsuffix(aws_apigatewayv2_stage.default.invoke_url, "/")}/v1"
+          OPENAI_API_KEYS       = var.chat_api_key
           ENABLE_OLLAMA_API     = "false"
-          WEBUI_AUTH            = "false"
+          WEBUI_AUTH            = "true"
           AIOHTTP_CLIENT_TIMEOUT          = "300"
           ENABLE_EVALUATION_ARENA_MODELS  = "false"
           DATABASE_URL                    = local.neon_open_webui_dsn

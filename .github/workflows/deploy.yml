@@ -13,7 +13,42 @@ env:
   AWS_REGION: eu-west-2
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      api: ${{ steps.filter.outputs.api }}
+      docproc: ${{ steps.filter.outputs.docproc }}
+      chunker: ${{ steps.filter.outputs.chunker }}
+      infra: ${{ steps.filter.outputs.infra }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            api:
+              - 'apps/rag_engine/**'
+              - 'apps/rag_engine/Dockerfile'
+              - 'pyproject.toml'
+              - 'uv.lock'
+            docproc:
+              - 'apps/docproc/**'
+              - 'apps/chunker_indexer/**'
+              - 'apps/docproc/Dockerfile'
+              - 'pyproject.toml'
+              - 'uv.lock'
+            chunker:
+              - 'apps/chunker_indexer/**'
+              - 'apps/chunker_indexer/Dockerfile'
+              - 'pyproject.toml'
+              - 'uv.lock'
+            infra:
+              - 'infra/**'
+
   test:
+    needs: changes
+    if: needs.changes.outputs.api == 'true' || needs.changes.outputs.docproc == 'true' || needs.changes.outputs.chunker == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -29,7 +64,8 @@ jobs:
         run: uv run --package ras-chunker-indexer --extra dev pytest apps/chunker_indexer/tests/ -v
 
   build-api:
-    needs: test
+    needs: [test, changes]
+    if: always() && needs.changes.outputs.api == 'true' && !failure() && !cancelled()
     runs-on: ubuntu-latest
     outputs:
       image_tag: ${{ steps.meta.outputs.sha }}
@@ -53,11 +89,12 @@ jobs:
       - name: Build and push API image
         run: |
           IMAGE="${{ steps.ecr-login.outputs.registry }}/raskl-chat:${{ steps.meta.outputs.sha }}"
-          docker build -f docker/api/Dockerfile -t "$IMAGE" .
+          docker build -f apps/rag_engine/Dockerfile -t "$IMAGE" .
           docker push "$IMAGE"
 
   build-docproc:
-    needs: test
+    needs: [test, changes]
+    if: always() && needs.changes.outputs.docproc == 'true' && !failure() && !cancelled()
     runs-on: ubuntu-latest
     outputs:
       image_tag: ${{ steps.meta.outputs.sha }}
@@ -81,11 +118,12 @@ jobs:
       - name: Build and push docproc image
         run: |
           IMAGE="${{ steps.ecr-login.outputs.registry }}/raskl-docproc:${{ steps.meta.outputs.sha }}"
-          docker build -f docker/docproc/Dockerfile -t "$IMAGE" .
+          docker build -f apps/docproc/Dockerfile -t "$IMAGE" .
           docker push "$IMAGE"
 
   build-chunker:
-    needs: test
+    needs: [test, changes]
+    if: always() && needs.changes.outputs.chunker == 'true' && !failure() && !cancelled()
     runs-on: ubuntu-latest
     outputs:
       image_tag: ${{ steps.meta.outputs.sha }}
@@ -109,12 +147,16 @@ jobs:
       - name: Build and push chunker image
         run: |
           IMAGE="${{ steps.ecr-login.outputs.registry }}/raskl-chunker:${{ steps.meta.outputs.sha }}"
-          docker build -f docker/chunker/Dockerfile -t "$IMAGE" .
+          docker build -f apps/chunker_indexer/Dockerfile -t "$IMAGE" .
           docker push "$IMAGE"
 
   deploy:
-    needs: [build-api, build-docproc, build-chunker]
+    needs: [changes, build-api, build-docproc, build-chunker]
+    if: always() && !failure() && !cancelled()
     runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: ${{ steps.urls.outputs.chat_url }}
     steps:
       - uses: actions/checkout@v4
 
@@ -125,22 +167,27 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Setup Terraform
+        if: needs.changes.outputs.infra == 'true'
         uses: hashicorp/setup-terraform@v3
 
       - name: Terraform Init
+        if: needs.changes.outputs.infra == 'true'
         working-directory: infra
         run: terraform init
 
       - name: Import pre-existing resources into Terraform state
+        if: needs.changes.outputs.infra == 'true'
         working-directory: infra
         run: |
           # Import ECR repo if it exists but isn't in state yet (first deploy only)
           terraform import \
             -var="neon_api_key=${{ secrets.NEON_API_KEY }}" \
             -var="upload_password_hash=${{ secrets.UPLOAD_PASSWORD_HASH }}" \
+            -var="chat_api_key=${{ secrets.CHAT_API_KEY }}" \
             aws_ecr_repository.chunker raskl-chunker 2>/dev/null || true
 
       - name: Build db-init Lambda package
+        if: needs.changes.outputs.infra == 'true'
         working-directory: infra
         run: |
           mkdir -p .build/db-init-pkg
@@ -149,25 +196,30 @@ jobs:
           cd .build/db-init-pkg && zip -r ../db-init.zip . -q
 
       - name: Terraform Plan
+        if: needs.changes.outputs.infra == 'true'
         working-directory: infra
         run: |
           terraform plan \
-            -var="chat_image_tag=${{ needs.build-api.outputs.image_tag }}" \
-            -var="docproc_image_tag=${{ needs.build-docproc.outputs.image_tag }}" \
-            -var="chunker_image_tag=${{ needs.build-chunker.outputs.image_tag }}" \
+            -var="chat_image_tag=${{ needs.build-api.outputs.image_tag || 'latest' }}" \
+            -var="docproc_image_tag=${{ needs.build-docproc.outputs.image_tag || 'latest' }}" \
+            -var="chunker_image_tag=${{ needs.build-chunker.outputs.image_tag || 'latest' }}" \
             -var="neon_api_key=${{ secrets.NEON_API_KEY }}" \
             -var="upload_password_hash=${{ secrets.UPLOAD_PASSWORD_HASH }}" \
+            -var="chat_api_key=${{ secrets.CHAT_API_KEY }}" \
             -out=tfplan
 
       - name: Terraform Apply
+        if: needs.changes.outputs.infra == 'true'
         working-directory: infra
         run: terraform apply -auto-approve tfplan
 
       - name: Login to ECR
+        if: needs.changes.outputs.infra == 'true'
         id: ecr-login
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Mirror Open WebUI image to ECR
+        if: needs.changes.outputs.infra == 'true'
         run: |
           ECR_REPO="${{ steps.ecr-login.outputs.registry }}/raskl-open-webui"
           docker pull ghcr.io/open-webui/open-webui:main
@@ -176,20 +228,33 @@ jobs:
 
       - name: Update Lambda images
         run: |
-          # Update chat Lambda to new image
-          CHAT_REPO=$(aws ecr describe-repositories --repository-names raskl-chat --query 'repositories[0].repositoryUri' --output text)
-          aws lambda update-function-code \
-            --function-name raskl-chat \
-            --image-uri "${CHAT_REPO}:${{ needs.build-api.outputs.image_tag }}"
+          # Update chat Lambda if API was rebuilt
+          if [ -n "${{ needs.build-api.outputs.image_tag }}" ]; then
+            CHAT_REPO=$(aws ecr describe-repositories --repository-names raskl-chat --query 'repositories[0].repositoryUri' --output text)
+            aws lambda update-function-code \
+              --function-name raskl-chat \
+              --image-uri "${CHAT_REPO}:${{ needs.build-api.outputs.image_tag }}"
+          fi
 
-          # Update docproc Lambda to new image
-          DOCPROC_REPO=$(aws ecr describe-repositories --repository-names raskl-docproc --query 'repositories[0].repositoryUri' --output text)
-          aws lambda update-function-code \
-            --function-name raskl-docproc \
-            --image-uri "${DOCPROC_REPO}:${{ needs.build-docproc.outputs.image_tag }}"
+          # Update docproc Lambda if docproc was rebuilt
+          if [ -n "${{ needs.build-docproc.outputs.image_tag }}" ]; then
+            DOCPROC_REPO=$(aws ecr describe-repositories --repository-names raskl-docproc --query 'repositories[0].repositoryUri' --output text)
+            aws lambda update-function-code \
+              --function-name raskl-docproc \
+              --image-uri "${DOCPROC_REPO}:${{ needs.build-docproc.outputs.image_tag }}"
+          fi
 
-          # Update chunker Lambda to new image
-          CHUNKER_REPO=$(aws ecr describe-repositories --repository-names raskl-chunker --query 'repositories[0].repositoryUri' --output text)
-          aws lambda update-function-code \
-            --function-name raskl-chunker \
-            --image-uri "${CHUNKER_REPO}:${{ needs.build-chunker.outputs.image_tag }}"
+          # Update chunker Lambda if chunker was rebuilt
+          if [ -n "${{ needs.build-chunker.outputs.image_tag }}" ]; then
+            CHUNKER_REPO=$(aws ecr describe-repositories --repository-names raskl-chunker --query 'repositories[0].repositoryUri' --output text)
+            aws lambda update-function-code \
+              --function-name raskl-chunker \
+              --image-uri "${CHUNKER_REPO}:${{ needs.build-chunker.outputs.image_tag }}"
+          fi
+
+      - name: Get deployment URL
+        id: urls
+        run: |
+          # Get Open WebUI URL from App Runner
+          CHAT_URL=$(aws apprunner list-services --query "ServiceSummaryList[?ServiceName=='raskl-open-webui'].ServiceUrl" --output text)
+          echo "chat_url=https://${CHAT_URL}" >> "$GITHUB_OUTPUT"
