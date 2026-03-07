@@ -193,6 +193,11 @@ resource "aws_iam_role_policy" "github_actions" {
       },
       {
         Effect   = "Allow"
+        Action   = ["iam:CreateServiceLinkedRole"]
+        Resource = "arn:aws:iam::${local.account_id}:role/aws-service-role/apprunner.amazonaws.com/*"
+      },
+      {
+        Effect   = "Allow"
         Action   = ["iam:PassRole"]
         Resource = "arn:aws:iam::${local.account_id}:role/${local.prefix}-apprunner-*"
       },
