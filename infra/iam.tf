@@ -189,7 +189,7 @@ resource "aws_iam_role_policy" "github_actions" {
       {
         Effect   = "Allow"
         Action   = ["apprunner:*"]
-        Resource = "arn:aws:apprunner:${local.region}:${local.account_id}:service/${local.prefix}-*"
+        Resource = "*"
       },
       {
         Effect   = "Allow"
