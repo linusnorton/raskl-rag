@@ -43,6 +43,15 @@ def lambda_handler(event, context):
             doc_id = _run_docproc(pdf_path, out_dir)
             logger.info("Docproc complete: doc_id=%s", doc_id)
 
+            # Guard: don't upload empty output (e.g. all pages failed OCR due to throttling)
+            text_blocks_file = out_dir / "out" / doc_id / "text_blocks.jsonl"
+            if not text_blocks_file.exists() or text_blocks_file.stat().st_size == 0:
+                logger.error(
+                    "Aborting upload for %s: text_blocks.jsonl is empty — OCR likely failed on all pages",
+                    doc_id,
+                )
+                continue
+
             # Upload versioned JSONL to S3 and run diff + email
             version = _upload_versioned_output(bucket, doc_id, out_dir, tmpdir)
             logger.info("Output uploaded to s3://%s/processed/%s/v%d/", bucket, doc_id, version)

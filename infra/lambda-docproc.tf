@@ -5,8 +5,9 @@ resource "aws_lambda_function" "docproc" {
   role          = aws_iam_role.lambda_exec.arn
   package_type  = "Image"
   image_uri     = "${aws_ecr_repository.docproc.repository_url}:${var.docproc_image_tag}"
-  timeout       = 900
-  memory_size   = 3008
+  timeout                        = 900
+  memory_size                    = 3008
+  reserved_concurrent_executions = 5
 
   environment {
     variables = {

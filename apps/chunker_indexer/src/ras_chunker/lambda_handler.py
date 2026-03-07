@@ -83,7 +83,9 @@ def _run_chunk_and_index(doc_id: str, data_dir: Path, version: int) -> None:
     output, chunks = load_and_chunk(doc_id, config)
 
     if not chunks:
-        logger.warning("No chunks produced for %s", doc_id)
+        logger.warning(
+            "No chunks produced for %s — skipping DB update (stale chunks may remain)", doc_id
+        )
         return
 
     embeddings = embed_chunks(chunks, config)

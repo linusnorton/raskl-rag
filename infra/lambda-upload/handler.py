@@ -5,6 +5,7 @@ import hashlib
 import html
 import json
 import os
+import time
 import urllib.parse
 
 import boto3
@@ -177,7 +178,7 @@ def _handle_reprocess_all(password):
     if not pdf_keys:
         return _html_response(200, '<div class="msg info">No PDFs found in uploads/.</div>')
 
-    for key in pdf_keys:
+    for i, key in enumerate(pdf_keys):
         s3.copy_object(
             Bucket=BUCKET,
             Key=key,
@@ -185,6 +186,9 @@ def _handle_reprocess_all(password):
             MetadataDirective="REPLACE",
             ContentType="application/pdf",
         )
+        # Stagger S3 events to avoid overwhelming Bedrock with concurrent DocProc Lambdas
+        if i < len(pdf_keys) - 1:
+            time.sleep(0.1)
 
     return _html_response(
         200,
