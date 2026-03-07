@@ -36,10 +36,12 @@ class LLMProvider(ABC):
         *,
         max_tokens: int,
         temperature: float,
+        tools: list[dict] | None = None,
     ) -> Generator[dict[str, str], None, None]:
         """Streaming chat completion. Yields dicts with optional keys:
         - reasoning: str (thinking token)
         - content: str (output token)
+        Tools must be passed when message history contains tool_calls/tool results.
         """
 
 

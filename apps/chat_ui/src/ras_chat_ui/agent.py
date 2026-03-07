@@ -158,11 +158,16 @@ def run_agent_streaming(
         if not removed:
             break
 
-    max_tokens = _compute_max_tokens(messages, llm, config)
+    # Pass tools if message history contains tool_calls (Bedrock requires toolConfig)
+    has_tool_messages = any(m.get("tool_calls") or m.get("role") == "tool" for m in messages)
+    stream_tools = tool_defs if has_tool_messages else None
+    max_tokens = _compute_max_tokens(messages, llm, config, tools=stream_tools)
     accumulated_reasoning = ""
     accumulated_content = ""
 
-    for delta in llm.chat_completion_stream(messages, max_tokens=max_tokens, temperature=config.llm_temperature):
+    for delta in llm.chat_completion_stream(
+        messages, max_tokens=max_tokens, temperature=config.llm_temperature, tools=stream_tools
+    ):
         reasoning_token = delta.get("reasoning", "")
         content_token = delta.get("content", "")
         if reasoning_token:

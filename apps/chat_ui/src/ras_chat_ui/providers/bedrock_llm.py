@@ -160,6 +160,7 @@ class BedrockLLMProvider(LLMProvider):
         *,
         max_tokens: int,
         temperature: float,
+        tools: list[dict] | None = None,
     ) -> Generator[dict[str, str], None, None]:
         client = _get_client(self.region)
         system_parts, bedrock_messages = _convert_messages(messages)
@@ -174,6 +175,8 @@ class BedrockLLMProvider(LLMProvider):
         }
         if system_parts:
             kwargs["system"] = system_parts
+        if tools:
+            kwargs["toolConfig"] = {"tools": _convert_tools(tools)}
         resp = client.converse_stream(**kwargs)
 
         for event in resp["stream"]:

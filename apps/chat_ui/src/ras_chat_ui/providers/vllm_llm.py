@@ -75,6 +75,7 @@ class VLLMLLMProvider(LLMProvider):
         *,
         max_tokens: int,
         temperature: float,
+        tools: list[dict] | None = None,
     ) -> Generator[dict[str, str], None, None]:
         payload: dict = {
             "model": self.model,
