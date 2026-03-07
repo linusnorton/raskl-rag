@@ -16,9 +16,9 @@ jobs:
   changes:
     runs-on: ubuntu-latest
     outputs:
-      api: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.api }}
-      docproc: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.docproc }}
-      chunker: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.chunker }}
+      api: ${{ steps.filter.outputs.api }}
+      docproc: ${{ steps.filter.outputs.docproc }}
+      chunker: ${{ steps.filter.outputs.chunker }}
       infra: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.infra }}
     steps:
       - uses: actions/checkout@v4
