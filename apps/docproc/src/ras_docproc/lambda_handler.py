@@ -69,7 +69,6 @@ def _run_docproc(pdf_path: Path, out_dir: Path) -> str:
         max_pages=None,
         page_range=None,
         force=True,
-        backend="qwen3vl",
     )
     return doc_id
 
