@@ -210,7 +210,6 @@ async def _stream_response(
 async def get_image(
     figure_id: str,
     thumb: bool = Query(False),
-    _auth: None = Depends(_check_auth),
     config: RAGConfig = Depends(_get_config),
 ):
     """Serve a figure image. Local mode returns file, Lambda mode redirects to S3 presigned URL."""

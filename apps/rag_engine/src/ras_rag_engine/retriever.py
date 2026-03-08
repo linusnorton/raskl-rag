@@ -168,6 +168,7 @@ def retrieve_contextual_figures(chunks: list[RetrievedChunk], config: RAGConfig)
     if not doc_id_pages:
         return []
 
+    base = config.api_base_url.rstrip("/")
     pairs = list(doc_id_pages)
     with psycopg.connect(config.dsn) as conn:
         register_vector(conn)
@@ -190,8 +191,8 @@ def retrieve_contextual_figures(chunks: list[RetrievedChunk], config: RAGConfig)
             doc_id=r[1],
             page_num=r[2],
             caption=r[3],
-            image_url=f"/v1/images/{r[0]}",
-            thumb_url=f"/v1/images/{r[0]}?thumb=true",
+            image_url=f"{base}/v1/images/{r[0]}",
+            thumb_url=f"{base}/v1/images/{r[0]}?thumb=true",
             source_filename=r[6],
         )
         for r in rows
@@ -240,6 +241,7 @@ def retrieve_figures(query: str, config: RAGConfig, top_k: int = 5) -> list[Retr
     vec = embed_query(query, config)
     vec_str = "[" + ",".join(str(x) for x in vec) + "]"
 
+    base = config.api_base_url.rstrip("/")
     with psycopg.connect(config.dsn) as conn:
         register_vector(conn)
         with conn.cursor() as cur:
@@ -252,8 +254,8 @@ def retrieve_figures(query: str, config: RAGConfig, top_k: int = 5) -> list[Retr
             doc_id=row[1],
             page_num=row[2],
             caption=row[3],
-            image_url=f"/v1/images/{row[0]}",
-            thumb_url=f"/v1/images/{row[0]}?thumb=true",
+            image_url=f"{base}/v1/images/{row[0]}",
+            thumb_url=f"{base}/v1/images/{row[0]}?thumb=true",
             source_filename=row[4],
         )
         for row in rows

@@ -249,11 +249,17 @@ without any custom integration code.
 2. **Explicit** — the `find_images` tool lets the LLM search figures by caption using hybrid
    search (vector + FTS on the `figures` table), returning top 5 results with markdown URLs.
 
-**Serving:** `GET /v1/images/{figure_id}` serves images directly:
+**Serving:** `GET /v1/images/{figure_id}` serves images directly (no auth required — the
+presigned S3 URL is already time-limited):
 - **Local mode:** returns the JPEG file from `data/out/{doc_id}/assets/`
 - **Lambda mode:** generates an S3 presigned URL (1h expiry) and returns a 302 redirect
 
 The `?thumb=true` query parameter serves the thumbnail instead.
+
+**Absolute URLs:** Image URLs in the LLM context use absolute URLs (`CHAT_API_BASE_URL` +
+`/v1/images/{id}`) so that Open WebUI (running on a different domain) can render `<img>` tags.
+Browser `<img>` tags cannot send `Authorization: Bearer` headers, which is why the image
+endpoint is unauthenticated.
 
 **Why no VL descriptions:** Captions extracted by docproc are sufficient for search. Adding
 VL-generated descriptions would increase processing cost and latency without clear retrieval
@@ -301,6 +307,7 @@ Key environment variables (prefix `CHAT_`):
 | `CHAT_API_PORT` | `8000` | API server port |
 | `CHAT_API_KEY` | _(empty)_ | Bearer token (if set, requires auth) |
 | `CHAT_S3_BUCKET` | _(empty)_ | S3 bucket for image assets (Lambda mode) |
+| `CHAT_API_BASE_URL` | `http://localhost:8000` | Base URL for absolute image URLs in LLM context |
 | `CHAT_DATA_DIR` | `data/out` | Local asset root for image serving |
 | `CHAT_TRANSCRIBE_S3_BUCKET` | _(empty)_ | S3 bucket for temp transcription files |
 | `CHAT_TRANSCRIBE_VOCABULARY_NAME` | _(empty)_ | AWS Transcribe custom vocabulary |

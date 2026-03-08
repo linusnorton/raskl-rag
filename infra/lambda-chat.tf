@@ -41,7 +41,8 @@ resource "aws_lambda_function" "chat" {
       CHAT_WEB_SEARCH_ENABLED = "true"
 
       # Image serving (S3 bucket for figure assets)
-      CHAT_S3_BUCKET = aws_s3_bucket.docs.id
+      CHAT_S3_BUCKET     = aws_s3_bucket.docs.id
+      CHAT_API_BASE_URL  = trimsuffix(aws_apigatewayv2_stage.default.invoke_url, "/")
 
       # Audio (S3 bucket for Transcribe temp files + custom vocabulary)
       CHAT_TRANSCRIBE_S3_BUCKET         = aws_s3_bucket.docs.id

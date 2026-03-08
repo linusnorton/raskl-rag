@@ -56,6 +56,7 @@ class RAGConfig(BaseSettings):
     # Image serving
     s3_bucket: str = ""  # S3 bucket for image assets (Lambda mode)
     data_dir: str = "data/out"  # Local asset root (local mode)
+    api_base_url: str = "http://localhost:8000"  # Base URL for image URLs in LLM context
 
     # API server
     api_port: int = 8000
