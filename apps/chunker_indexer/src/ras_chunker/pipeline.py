@@ -52,24 +52,35 @@ def load_and_chunk(doc_id: str, config: ChunkerConfig) -> tuple[DocprocOutput, l
     return output, chunks
 
 
+def _to_relative_asset_path(absolute_path: str | None) -> str:
+    """Convert an absolute asset path to a relative one (e.g. 'assets/p7_img0.jpg').
+
+    The JSONL may contain absolute paths from Lambda /tmp or local data/out.
+    We extract from 'assets/' onwards, which is the directory convention.
+    """
+    if not absolute_path:
+        return ""
+    idx = absolute_path.find("assets/")
+    if idx >= 0:
+        return absolute_path[idx:]
+    # Fallback: just use the filename
+    return "assets/" + absolute_path.rsplit("/", 1)[-1]
+
+
 def _build_figures(output: DocprocOutput) -> list[FigureMeta]:
     """Build FigureMeta list from docproc output, computing relative asset paths."""
     figures = []
-    doc_dir_str = str(output.doc_dir) + "/"
     for fig in output.figures:
         if not fig.asset_jpg_path:
             continue
-        # Compute relative path: strip the doc_dir prefix
-        asset_path = fig.asset_jpg_path.replace(doc_dir_str, "") if fig.asset_jpg_path else ""
-        thumb_path = fig.asset_thumb_path.replace(doc_dir_str, "") if fig.asset_thumb_path else ""
         figures.append(
             FigureMeta(
                 figure_id=fig.figure_id,
                 doc_id=fig.doc_id,
                 page_num=fig.page_num_1,
                 caption=fig.caption_text_clean,
-                asset_path=asset_path,
-                thumb_path=thumb_path,
+                asset_path=_to_relative_asset_path(fig.asset_jpg_path),
+                thumb_path=_to_relative_asset_path(fig.asset_thumb_path),
             )
         )
     return figures
