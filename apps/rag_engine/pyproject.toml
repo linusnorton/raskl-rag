@@ -12,6 +12,7 @@ dependencies = [
     "duckduckgo-search>=7.0",
     "sentence-transformers>=3.0",
     "sse-starlette>=2.0",
+    "python-multipart>=0.0.9",
 ]
 
 [project.optional-dependencies]
