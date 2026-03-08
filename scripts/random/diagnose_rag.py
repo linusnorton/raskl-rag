@@ -1,15 +1,12 @@
 """Diagnostic script to test each RAG component (embedding, retrieval, reranking, LLM) independently.
 
 Usage:
-    # Test Bedrock stack (as deployed)
-    CHAT_LLM_PROVIDER=bedrock CHAT_EMBED_PROVIDER=bedrock CHAT_RERANK_PROVIDER=bedrock \
-    CHAT_BEDROCK_EMBED_MODEL_ID=amazon.titan-embed-text-v2:0 \
-    CHAT_EMBED_TASK_PREFIX="" CHAT_EMBED_DIMENSIONS=1024 \
+    # Test against Neon
     CHAT_DATABASE_DSN="<neon_dsn>" \
-    uv run python scripts/diagnose_rag.py
+    uv run python scripts/random/diagnose_rag.py
 
     # Test with specific query
-    ... uv run python scripts/diagnose_rag.py --query "What dates did Swettenham go to Singapore?"
+    uv run python scripts/random/diagnose_rag.py --query "What dates did Swettenham go to Singapore?"
 """
 
 import argparse
@@ -43,11 +40,7 @@ def test_embedding(config: ChatConfig, query: str):
     print("\n" + "=" * 80)
     print("STEP 1: EMBEDDING")
     print("=" * 80)
-    print(f"Provider: {config.embed_provider}")
-    if config.embed_provider == "bedrock":
-        print(f"Model: {config.bedrock_embed_model_id}")
-    else:
-        print(f"Model: {config.embed_model}")
+    print(f"Model: {config.bedrock_embed_model_id}")
     print(f"Task prefix: '{config.embed_task_prefix}'")
     print(f"Dimensions: {config.embed_dimensions}")
 
@@ -151,9 +144,7 @@ def test_reranking(config: ChatConfig, query: str, chunks: list[RetrievedChunk])
     print("\n" + "=" * 80)
     print("STEP 3: RERANKING")
     print("=" * 80)
-    print(f"Provider: {config.rerank_provider}")
-    if config.rerank_provider == "bedrock":
-        print(f"Model: {config.bedrock_rerank_model_id} (region: {config.bedrock_rerank_region})")
+    print(f"Model: {config.bedrock_rerank_model_id} (region: {config.bedrock_rerank_region})")
 
     if not chunks:
         print("  No chunks to rerank!")
@@ -196,11 +187,7 @@ def test_llm(config: ChatConfig, query: str, chunks: list[RetrievedChunk]):
     print("\n" + "=" * 80)
     print("STEP 4: LLM RESPONSE")
     print("=" * 80)
-    print(f"Provider: {config.llm_provider}")
-    if config.llm_provider == "bedrock":
-        print(f"Model: {config.bedrock_chat_model_id}")
-    else:
-        print(f"Model: {config.llm_model}")
+    print(f"Model: {config.bedrock_chat_model_id}")
     print(f"Temperature: {config.llm_temperature}")
 
     if not chunks:
@@ -262,9 +249,9 @@ def main():
     config = ChatConfig()
 
     print("Configuration:")
-    print(f"  LLM provider: {config.llm_provider}")
-    print(f"  Embed provider: {config.embed_provider}")
-    print(f"  Rerank provider: {config.rerank_provider}")
+    print(f"  LLM model: {config.bedrock_chat_model_id}")
+    print(f"  Embed model: {config.bedrock_embed_model_id}")
+    print(f"  Rerank model: {config.bedrock_rerank_model_id}")
     print(f"  DSN: {config.dsn[:40]}...")
     print(f"  Query: {args.query}")
 

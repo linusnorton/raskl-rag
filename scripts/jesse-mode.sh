@@ -25,12 +25,12 @@ if [[ -z "${AWS_PROFILE:-}" && -z "${AWS_ACCESS_KEY_ID:-}" ]]; then
     fail "AWS credentials not set — set AWS_PROFILE or AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY in .env"
 fi
 
-# --- Set Bedrock providers ---
-# If using explicit keys, prevent export_bedrock_env from setting AWS_PROFILE
+# --- AWS credentials ---
+# If using explicit keys, don't override with AWS_PROFILE
 if [[ -n "${AWS_ACCESS_KEY_ID:-}" ]]; then
     export AWS_PROFILE=""
 fi
-export_bedrock_env
+export_aws_env
 
 # --- Install dependencies ---
 step "Installing dependencies"

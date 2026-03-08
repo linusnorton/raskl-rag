@@ -1,4 +1,4 @@
-"""Reranking with pluggable backends: Qwen3-Reranker, CrossEncoder, or Bedrock."""
+"""Reranking via AWS Bedrock."""
 
 from __future__ import annotations
 

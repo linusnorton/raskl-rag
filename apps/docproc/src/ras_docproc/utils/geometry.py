@@ -40,7 +40,13 @@ def vertical_distance(a: BBox, b: BBox) -> float:
     return b.y0 - a.y1
 
 
-def bbox_to_pixel_coords(bbox: BBox, page_rect_width: float, page_rect_height: float, pixmap_width: int, pixmap_height: int) -> BBox:
+def bbox_to_pixel_coords(
+    bbox: BBox,
+    page_rect_width: float,
+    page_rect_height: float,
+    pixmap_width: int,
+    pixmap_height: int,
+) -> BBox:
     """Convert PDF coordinate bbox to pixel coordinates for a rendered pixmap."""
     scale_x = pixmap_width / page_rect_width
     scale_y = pixmap_height / page_rect_height

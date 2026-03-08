@@ -112,41 +112,13 @@ not `footnote_number`. Many historical documents use per-page footnote numbering
 number (e.g. footnote 12) can appear on multiple pages. Keying by number caused collisions
 where only the last footnote with a given number survived in the map.
 
-### D4 — Hybrid search: vector + full-text with Reciprocal Rank Fusion
+### D4 — Indexes for hybrid search
 
-**What we chose:** Two independent searches run in parallel on each query:
+**What we chose:** The database schema includes both an HNSW vector index and a GIN full-text
+index on the `chunks` table. These support the hybrid search (vector + full-text with Reciprocal
+Rank Fusion) implemented by `ras-rag-engine`.
 
-- **Vector search:** cosine similarity between the query embedding and all stored chunk embeddings,
-  top 50 candidates
-- **Full-text search:** PostgreSQL `ts_rank` on a GIN-indexed tsvector, using OR logic, top 50
-  candidates (title and author fields weighted higher than body text)
-
-The two result lists are combined using Reciprocal Rank Fusion (RRF):
-
-```
-rrf_score = 1/(60 + vector_rank) + 1/(60 + text_rank)
-```
-
-Chunks that appear in both lists get contributions from both terms; chunks that appear in only one
-list get a single contribution.
-
-**Why hybrid:** Vector search excels at semantic similarity — it finds passages that are
-conceptually related to the query even if they don't share exact words. Full-text search excels at
-exact matches — names, dates, place names, and other proper nouns that might not translate well to
-vector space. A query like "Swettenham 1875 Singapore" benefits from both: vector search finds
-contextually relevant passages, FTS finds passages that contain those specific terms.
-
-**Why OR logic (not AND):** With AND logic, a query like "Swettenham 1875 Singapore" would require
-all three terms to appear in the same passage. A journal entry from 1875 that discusses Singapore
-but attributes authorship to Swettenham only in a separate header block would be missed. OR logic
-matches any passage containing any query term, letting the RRF scoring surface passages with
-multiple matches above those with only one.
-
-**Why RRF constant 60:** This is a standard value from the RRF literature. The constant prevents
-the score from blowing up for rank-1 results (which would be `1/1 = 1.0` without the constant)
-while still rewarding items that rank highly in both systems. At constant 60, a result ranked #1
-in both systems scores `1/61 + 1/61 ≈ 0.033`, while a result ranked #50 in both scores only
-`1/110 + 1/110 ≈ 0.018`.
+See `apps/rag_engine/README.md` (D1) for the full hybrid search design and rationale.
 
 ### D5 — HNSW index for approximate vector search
 

@@ -11,66 +11,32 @@ if TYPE_CHECKING:
 
 
 def get_llm_provider(config: RAGConfig) -> LLMProvider:
-    if config.llm_provider == "bedrock":
-        from .bedrock_llm import BedrockLLMProvider
+    from .bedrock_llm import BedrockLLMProvider
 
-        return BedrockLLMProvider(
-            region=config.bedrock_region,
-            model_id=config.bedrock_chat_model_id,
-            thinking_budget=config.llm_thinking_budget,
-        )
-    else:
-        from .vllm_llm import VLLMLLMProvider
-
-        return VLLMLLMProvider(
-            base_url=config.llm_base_url,
-            model=config.llm_model,
-        )
+    return BedrockLLMProvider(
+        region=config.bedrock_region,
+        model_id=config.bedrock_chat_model_id,
+        thinking_budget=config.llm_thinking_budget,
+    )
 
 
 def get_embed_provider(config: RAGConfig) -> EmbedProvider:
-    if config.embed_provider == "bedrock":
-        from .bedrock_embed import BedrockEmbedProvider
+    from .bedrock_embed import BedrockEmbedProvider
 
-        return BedrockEmbedProvider(
-            region=config.bedrock_region,
-            model_id=config.bedrock_embed_model_id,
-            dimensions=config.embed_dimensions,
-            task_prefix=config.embed_task_prefix,
-            input_type="search_query",
-        )
-    else:
-        from .local_embed import LocalEmbedProvider
-
-        return LocalEmbedProvider(
-            model_path=config.embed_model,
-            device=config.embed_device,
-            dimensions=config.embed_dimensions,
-            task_prefix=config.embed_task_prefix,
-        )
+    return BedrockEmbedProvider(
+        region=config.bedrock_region,
+        model_id=config.bedrock_embed_model_id,
+        dimensions=config.embed_dimensions,
+        task_prefix=config.embed_task_prefix,
+        input_type="search_query",
+    )
 
 
 def get_rerank_provider(config: RAGConfig) -> RerankProvider:
-    if config.rerank_provider == "bedrock":
-        from .bedrock_rerank import BedrockRerankProvider
+    from .bedrock_rerank import BedrockRerankProvider
 
-        return BedrockRerankProvider(
-            region=config.bedrock_rerank_region,
-            model_id=config.bedrock_rerank_model_id,
-            query_prefix=config.rerank_instruction + ": " if config.rerank_instruction else "",
-        )
-    elif config.rerank_provider == "cross-encoder":
-        from .local_rerank import CrossEncoderRerankProvider
-
-        return CrossEncoderRerankProvider(
-            model_path=config.rerank_model,
-            device=config.rerank_device,
-        )
-    else:
-        from .local_rerank import Qwen3RerankProvider
-
-        return Qwen3RerankProvider(
-            model_path=config.rerank_model,
-            device=config.rerank_device,
-            instruction=config.rerank_instruction,
-        )
+    return BedrockRerankProvider(
+        region=config.bedrock_rerank_region,
+        model_id=config.bedrock_rerank_model_id,
+        query_prefix=config.rerank_instruction + ": " if config.rerank_instruction else "",
+    )

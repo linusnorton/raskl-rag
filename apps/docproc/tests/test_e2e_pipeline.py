@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
-
-import pytest
 
 from ras_docproc.config import PipelineConfig
 from ras_docproc.pipeline.boilerplate import detect_boilerplate
@@ -16,9 +13,9 @@ from ras_docproc.pipeline.detect_footnotes import detect_footnotes
 from ras_docproc.pipeline.detect_language import detect_languages
 from ras_docproc.pipeline.detect_rotation import detect_rotation
 from ras_docproc.pipeline.export_jsonl import export_all
-from ras_docproc.pipeline.extract_docling import extract_with_docling
 from ras_docproc.pipeline.extract_metadata import extract_metadata
 from ras_docproc.pipeline.extract_mupdf import extract_pdf_metadata, extract_with_mupdf
+from ras_docproc.pipeline.extract_qwen3vl import extract_with_qwen3vl
 from ras_docproc.pipeline.inventory import run_inventory
 from ras_docproc.pipeline.link_footnote_refs import apply_ref_markup, link_footnote_refs
 from ras_docproc.pipeline.normalize_text import normalize_blocks, ocr_cleanup_blocks
@@ -53,8 +50,8 @@ def _run_full_pipeline(
     document = run_inventory(config)
     doc_id = document.doc_id
 
-    # 2. Docling extraction
-    blocks_by_page = extract_with_docling(config, doc_id)
+    # 2. Qwen3 VL extraction
+    blocks_by_page = extract_with_qwen3vl(config, doc_id)
 
     # 3. MuPDF extraction
     mupdf_data = extract_with_mupdf(config)
@@ -207,8 +204,7 @@ class TestSwettenhamPipeline:
         # Scanned PDFs: after filtering, figures should be far fewer than pages
         # (each page has a full-page scan image that should be skipped)
         assert len(figures) < len(pages), (
-            f"Expected fewer figures ({len(figures)}) than pages ({len(pages)}) "
-            "after filtering full-page scans"
+            f"Expected fewer figures ({len(figures)}) than pages ({len(pages)}) after filtering full-page scans"
         )
 
         if figures:
@@ -258,8 +254,12 @@ class TestAznanPipeline:
                 break
 
         assert page_12 is not None, "Page 12 not found in output"
-        assert page_12.has_vertical_text is True, f"Expected vertical text on page 12, ratio={page_12.vertical_text_ratio}"
-        assert page_12.suggested_rotation_cw in (90, 270), f"Expected rotation 90 or 270, got {page_12.suggested_rotation_cw}"
+        assert page_12.has_vertical_text is True, (
+            f"Expected vertical text on page 12, ratio={page_12.vertical_text_ratio}"
+        )
+        assert page_12.suggested_rotation_cw in (90, 270), (
+            f"Expected rotation 90 or 270, got {page_12.suggested_rotation_cw}"
+        )
 
         # Check for rendered clip figure
         figures = read_jsonl(doc_dir / "figures.jsonl", FigureRecord)
@@ -272,12 +272,6 @@ class TestAznanPipeline:
         doc_dir, doc_id = _run_full_pipeline(aznan_pdf, tmp_out_dir)
 
         figures = read_jsonl(doc_dir / "figures.jsonl", FigureRecord)
-        fig2_candidates = [
-            f for f in figures
-            if f.caption_text_clean and ("Fig. 2" in f.caption_text_clean or "Fig.2" in f.caption_text_clean or "fig. 2" in f.caption_text_clean.lower())
-        ]
-
-        # This may or may not match depending on the PDF structure
         # At minimum, check that figures were extracted
         assert len(figures) > 0, "Expected at least some figures from Aznan PDF"
 
@@ -316,7 +310,6 @@ class TestAbdullahPipeline:
         if refs:
             match_types = {r.match_type for r in refs}
             assert match_types, "Expected match_type on footnote refs"
-
 
     def test_footnote_ref_markup(self, abdullah_pdf: Path, tmp_out_dir: Path):
         """Verify at least one text_clean contains [ref:N] markup."""

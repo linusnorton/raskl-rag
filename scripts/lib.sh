@@ -30,15 +30,8 @@ start_postgres() {
     echo "[WARN] PostgreSQL not ready after 30s, continuing anyway."
 }
 
-# --- Bedrock environment ---
+# --- AWS credentials ---
 
-export_bedrock_env() {
+export_aws_env() {
     export AWS_PROFILE="${AWS_PROFILE:-linusnorton}"
-    export CHAT_LLM_PROVIDER=bedrock
-    export CHAT_EMBED_PROVIDER=bedrock
-    export CHAT_RERANK_PROVIDER=bedrock
-    export CHAT_EMBED_TASK_PREFIX=""
-    export CHAT_LLM_THINKING_BUDGET=2048
-    export CHUNKER_EMBED_PROVIDER=bedrock
-    export CHUNKER_EMBED_TASK_PREFIX=""
 }

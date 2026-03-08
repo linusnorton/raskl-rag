@@ -10,7 +10,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
 from ras_docproc.schema import TextBlockRecord
 from ras_docproc.utils.io import read_jsonl
 
@@ -35,10 +34,7 @@ class TestSwettenhamBlockBoundaries:
         page_111_blocks = [b for b in swettenham_blocks if b.page_num_1 == 111]
         assert len(page_111_blocks) > 0, "No blocks found on page 111"
 
-        october_blocks = [
-            b for b in page_111_blocks
-            if "6th October" in (b.text_clean or b.text_raw)
-        ]
+        october_blocks = [b for b in page_111_blocks if "6th October" in (b.text_clean or b.text_raw)]
         assert len(october_blocks) >= 1, (
             f"No block containing '6th October' found on page 111. "
             f"Blocks: {[b.text_clean[:80] for b in page_111_blocks]}"
@@ -61,9 +57,7 @@ class TestSwettenhamBlockBoundaries:
             # If a block contains '6th October', it should not also contain
             # unrelated preceding narrative (e.g. about leaving at 11 A.M.)
             if "6th October" in text and "11 A.M" in text:
-                pytest.fail(
-                    f"'6th October' is merged with prior narrative in same block: {text[:200]}"
-                )
+                pytest.fail(f"'6th October' is merged with prior narrative in same block: {text[:200]}")
 
     def test_messy_pdf_has_text_blocks(self, swettenham_blocks: list[TextBlockRecord]):
         """Ensure the qwen3vl backend produced non-empty output for the messy PDF."""

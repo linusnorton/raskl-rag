@@ -11,8 +11,8 @@ from PIL import Image
 
 from ras_docproc.config import PipelineConfig
 from ras_docproc.pipeline.extract_mupdf import MuPDFPageData
-from ras_docproc.schema import BBox, FigureRecord
-from ras_docproc.utils.hashing import make_block_id, text_hash
+from ras_docproc.schema import FigureRecord
+from ras_docproc.utils.hashing import make_block_id
 from ras_docproc.utils.io import ensure_dir
 
 logger = logging.getLogger(__name__)
@@ -40,8 +40,6 @@ def detect_figures(
     Returns:
         List of FigureRecord.
     """
-    import fitz
-
     assets_dir = ensure_dir(config.out_dir / "out" / doc_id / "assets")
     page_rotations = page_rotations or {}
     figures: list[FigureRecord] = []

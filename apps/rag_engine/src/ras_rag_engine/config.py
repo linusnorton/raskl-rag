@@ -8,43 +8,31 @@ from pydantic_settings import BaseSettings
 class RAGConfig(BaseSettings):
     model_config = {"env_prefix": "CHAT_"}
 
-    # Provider selection
-    llm_provider: str = "vllm"  # "vllm" or "bedrock"
-    embed_provider: str = "sentence-transformers"  # "sentence-transformers" or "bedrock"
-    rerank_provider: str = "qwen3"  # "qwen3", "cross-encoder", or "bedrock"
-
-    # Chat LLM (vLLM backend)
-    llm_base_url: str = "http://localhost:8002/v1"
-    llm_model: str = "Qwen/Qwen3-30B-A3B-GPTQ-Int4"
+    # Chat LLM
     llm_max_tokens: int = 4096
     llm_context_window: int = 40960
     llm_temperature: float = 0.5
 
-    # Embedding (sentence-transformers backend)
-    embed_model: str = "./models/Qwen--Qwen3-Embedding-8B"
+    # Embedding
     embed_dimensions: int = 1024
-    embed_task_prefix: str = "Represent this query for retrieving relevant passages: "
-    embed_device: str = "cpu"  # CHAT_EMBED_DEVICE — "cpu" or "cuda"
+    embed_task_prefix: str = ""
 
-    # Reranker (local backends)
-    rerank_model: str = "./models/Qwen--Qwen3-Reranker-8B"
+    # Reranker
     rerank_enabled: bool = True
     rerank_candidates: int = 30
-    rerank_backend: str = "qwen3"  # CHAT_RERANK_BACKEND — "qwen3" or "cross-encoder"
-    rerank_device: str = "cpu"  # CHAT_RERANK_DEVICE — "cpu" or "cuda"
     rerank_instruction: str = (
         "Given a user question about historical JMBRAS and Swettenham journal documents, "
         "judge whether the document passage is relevant"
     )
 
-    # Bedrock configuration (used when provider = "bedrock")
+    # Bedrock
     bedrock_region: str = "eu-west-2"
     bedrock_chat_model_id: str = "qwen.qwen3-235b-a22b-2507-v1:0"
     bedrock_embed_model_id: str = "amazon.titan-embed-text-v2:0"
     bedrock_rerank_region: str = "eu-central-1"  # Cohere Rerank not available in all regions
     bedrock_rerank_model_id: str = "amazon.rerank-v1:0"
 
-    # Extended thinking (Bedrock only, 0 = disabled)
+    # Extended thinking (0 = disabled)
     llm_thinking_budget: int = 2048
 
     # Retrieval

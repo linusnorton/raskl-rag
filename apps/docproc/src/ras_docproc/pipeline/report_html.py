@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import base64
-import io
 import logging
 from pathlib import Path
 
@@ -16,16 +15,16 @@ from ras_docproc.utils.io import ensure_dir, read_jsonl
 logger = logging.getLogger(__name__)
 
 BLOCK_TYPE_COLORS = {
-    "paragraph": "#3b82f6",   # blue
-    "heading": "#22c55e",     # green
-    "footnote": "#f97316",    # orange
-    "caption": "#a855f7",     # purple
-    "header": "#ef4444",      # red
-    "footer": "#ef4444",      # red
-    "list_item": "#06b6d4",   # cyan
-    "table": "#eab308",       # yellow
-    "page_number": "#6b7280", # gray
-    "unknown": "#9ca3af",     # light gray
+    "paragraph": "#3b82f6",  # blue
+    "heading": "#22c55e",  # green
+    "footnote": "#f97316",  # orange
+    "caption": "#a855f7",  # purple
+    "header": "#ef4444",  # red
+    "footer": "#ef4444",  # red
+    "list_item": "#06b6d4",  # cyan
+    "table": "#eab308",  # yellow
+    "page_number": "#6b7280",  # gray
+    "unknown": "#9ca3af",  # light gray
 }
 
 
@@ -59,6 +58,7 @@ def generate_report(
 
     # Get source PDF path from documents.jsonl
     from ras_docproc.schema import DocumentRecord
+
     docs = read_jsonl(doc_dir / "documents.jsonl", DocumentRecord)
     if not docs:
         raise ValueError("No documents.jsonl found")
@@ -93,47 +93,53 @@ def generate_report(
         page_blocks = blocks_by_page.get(pr.page_num_1, [])
         for block in page_blocks:
             color = BLOCK_TYPE_COLORS.get(block.block_type, "#9ca3af")
-            svg_rects.append({
-                "x": block.bbox.x0 * scale_x,
-                "y": block.bbox.y0 * scale_y,
-                "w": block.bbox.width * scale_x,
-                "h": block.bbox.height * scale_y,
-                "color": color,
-                "type": block.block_type,
-                "text_preview": (block.text_clean or block.text_raw)[:80],
-                "block_id": block.block_id[:12],
-                "lang": block.lang or "",
-            })
+            svg_rects.append(
+                {
+                    "x": block.bbox.x0 * scale_x,
+                    "y": block.bbox.y0 * scale_y,
+                    "w": block.bbox.width * scale_x,
+                    "h": block.bbox.height * scale_y,
+                    "color": color,
+                    "type": block.block_type,
+                    "text_preview": (block.text_clean or block.text_raw)[:80],
+                    "block_id": block.block_id[:12],
+                    "lang": block.lang or "",
+                }
+            )
 
         # Figure overlays
         fig_rects = []
         for fig in figs_by_page.get(pr.page_num_1, []):
             if fig.bbox:
-                fig_rects.append({
-                    "x": fig.bbox.x0 * scale_x,
-                    "y": fig.bbox.y0 * scale_y,
-                    "w": fig.bbox.width * scale_x,
-                    "h": fig.bbox.height * scale_y,
-                    "figure_id": fig.figure_id[:12],
-                    "caption": fig.caption_text_clean[:60] if fig.caption_text_clean else "",
-                })
+                fig_rects.append(
+                    {
+                        "x": fig.bbox.x0 * scale_x,
+                        "y": fig.bbox.y0 * scale_y,
+                        "w": fig.bbox.width * scale_x,
+                        "h": fig.bbox.height * scale_y,
+                        "figure_id": fig.figure_id[:12],
+                        "caption": fig.caption_text_clean[:60] if fig.caption_text_clean else "",
+                    }
+                )
 
         # Footnote zone line
         fn_zone_y = pr.height * 0.72 * scale_y
 
-        page_data.append({
-            "page_num": pr.page_num_1,
-            "width": pix.width,
-            "height": pix.height,
-            "img_b64": img_b64,
-            "svg_rects": svg_rects,
-            "fig_rects": fig_rects,
-            "fn_zone_y": fn_zone_y,
-            "blocks": page_blocks,
-            "has_vertical_text": pr.has_vertical_text,
-            "suggested_rotation": pr.suggested_rotation_cw,
-            "vertical_text_ratio": pr.vertical_text_ratio,
-        })
+        page_data.append(
+            {
+                "page_num": pr.page_num_1,
+                "width": pix.width,
+                "height": pix.height,
+                "img_b64": img_b64,
+                "svg_rects": svg_rects,
+                "fig_rects": fig_rects,
+                "fn_zone_y": fn_zone_y,
+                "blocks": page_blocks,
+                "has_vertical_text": pr.has_vertical_text,
+                "suggested_rotation": pr.suggested_rotation_cw,
+                "vertical_text_ratio": pr.vertical_text_ratio,
+            }
+        )
 
     doc.close()
 

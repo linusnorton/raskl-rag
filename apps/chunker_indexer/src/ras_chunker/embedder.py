@@ -1,4 +1,4 @@
-"""Batched embedding via pluggable providers (vLLM or Bedrock)."""
+"""Batched embedding via Bedrock."""
 
 from __future__ import annotations
 

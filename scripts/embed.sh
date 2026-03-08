@@ -6,7 +6,7 @@
 #   ./scripts/embed.sh
 source "$(dirname "$0")/lib.sh"
 
-export_bedrock_env
+export_aws_env
 
 start_postgres
 uv run ras-chunker init-db

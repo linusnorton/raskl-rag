@@ -18,22 +18,11 @@ class EmbedProvider(ABC):
 
 
 def get_embed_provider(config: ChunkerConfig) -> EmbedProvider:
-    if config.embed_provider == "bedrock":
-        from .bedrock_embed import BedrockEmbedProvider
+    from .bedrock_embed import BedrockEmbedProvider
 
-        return BedrockEmbedProvider(
-            region=config.bedrock_region,
-            model_id=config.bedrock_embed_model_id,
-            dimensions=config.embed_dimensions,
-            task_prefix=config.embed_task_prefix,
-        )
-    else:
-        from .vllm_embed import VLLMEmbedProvider
-
-        return VLLMEmbedProvider(
-            base_url=config.embed_base_url,
-            model=config.embed_model,
-            batch_size=config.embed_batch_size,
-            dimensions=config.embed_dimensions,
-            task_prefix=config.embed_task_prefix,
-        )
+    return BedrockEmbedProvider(
+        region=config.bedrock_region,
+        model_id=config.bedrock_embed_model_id,
+        dimensions=config.embed_dimensions,
+        task_prefix=config.embed_task_prefix,
+    )

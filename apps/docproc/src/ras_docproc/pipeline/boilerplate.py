@@ -7,7 +7,7 @@ import re
 from collections import Counter
 
 from ras_docproc.config import PipelineConfig
-from ras_docproc.schema import BBox, TextBlockRecord
+from ras_docproc.schema import TextBlockRecord
 from ras_docproc.utils.geometry import is_in_zone
 from ras_docproc.utils.text import normalize_for_frequency
 
@@ -62,7 +62,12 @@ def detect_boilerplate(
     boilerplate_lines = {line for line, count in line_page_counts.items() if count >= threshold}
 
     if boilerplate_lines:
-        logger.info("Found %d boilerplate line patterns (threshold=%d/%d pages)", len(boilerplate_lines), threshold, total_pages)
+        logger.info(
+            "Found %d boilerplate line patterns (threshold=%d/%d pages)",
+            len(boilerplate_lines),
+            threshold,
+            total_pages,
+        )
 
     # Mark and remove boilerplate blocks
     removed: list[TextBlockRecord] = []

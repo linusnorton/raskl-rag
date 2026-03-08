@@ -51,7 +51,7 @@ def detect_captions(
             continue
 
         # Sort figures by vertical position
-        page_figs.sort(key=lambda f: (f.bbox.y0 if f.bbox else 0))
+        page_figs.sort(key=lambda f: f.bbox.y0 if f.bbox else 0)
 
         # Get image bboxes for boundary checking
         fig_bboxes = [f.bbox for f in page_figs if f.bbox]
@@ -122,5 +122,9 @@ def detect_captions(
                 )
             )
 
-    logger.info("Matched captions for %d figures, found %d plates", sum(1 for f in figures if f.caption_block_ids), len(plates))
+    logger.info(
+        "Matched captions for %d figures, found %d plates",
+        sum(1 for f in figures if f.caption_block_ids),
+        len(plates),
+    )
     return figures, plates

@@ -40,12 +40,7 @@ def config(is_live: bool) -> ChatConfig:
 
     Default: local PostgreSQL. With --live: Neon DB.
     """
-    kwargs: dict = dict(
-        llm_provider="bedrock",
-        embed_provider="bedrock",
-        rerank_provider="bedrock",
-        llm_thinking_budget=2048,
-    )
+    kwargs: dict = dict()
     if is_live:
         kwargs["database_dsn"] = NEON_DSN
     return ChatConfig(**kwargs)

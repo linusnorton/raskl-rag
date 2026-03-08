@@ -44,10 +44,10 @@ See `DEPLOYMENT.md` for full details.
 uv sync --all-packages
 
 # Run docproc on a single PDF (Qwen3 VL via Bedrock)
-uv run ras-docproc run --pdf "path/to/file.pdf" --backend qwen3vl
+uv run ras-docproc run --pdf "path/to/file.pdf"
 
 # Run docproc on all PDFs in docs/
-uv run ras-docproc run-all --docs-dir docs --backend qwen3vl
+uv run ras-docproc run-all --docs-dir docs
 
 # Generate HTML debug report
 uv run ras-docproc report --doc-id DOC_ID --pages 1,5,10
@@ -67,10 +67,10 @@ uv run ras-chunker init-db
 uv run ras-chunker plan --doc-id DOC_ID
 
 # Index a document (Bedrock Titan Embed v2 + PostgreSQL)
-CHUNKER_EMBED_PROVIDER=bedrock uv run ras-chunker index --doc-id DOC_ID
+uv run ras-chunker index --doc-id DOC_ID
 
 # Index all processed documents
-CHUNKER_EMBED_PROVIDER=bedrock uv run ras-chunker index-all
+uv run ras-chunker index-all
 
 # Run chunker tests
 uv run --package ras-chunker-indexer pytest apps/chunker_indexer/tests/ -v
@@ -80,7 +80,7 @@ uv run --package ras-chunker-indexer pytest apps/chunker_indexer/tests/ -v
 
 The `docproc` pipeline processes PDFs through these stages:
 1. **Inventory** — discover PDF, compute SHA256, generate doc_id
-2. **Extract (Qwen3 VL)** — structured content extraction via Bedrock (or Docling/DeepSeek for legacy local use)
+2. **Extract (Qwen3 VL)** — structured content extraction via Bedrock
 3. **Extract (MuPDF)** — low-level text/image/font extraction via PyMuPDF
 4. **Normalize** — NFKC normalization, dehyphenation, text cleaning
 5. **Boilerplate** — detect/remove headers, footers, repeated lines
@@ -103,7 +103,7 @@ All model inference uses AWS Bedrock:
 | Reranking | Amazon Rerank v1 |
 | OCR (docproc) | Qwen3-VL-235B via Converse API |
 
-Config fields: `CHAT_LLM_PROVIDER`, `CHAT_EMBED_PROVIDER`, `CHAT_RERANK_PROVIDER`, `CHUNKER_EMBED_PROVIDER`
+Bedrock is the only provider — no local alternatives. See each app's README for model-specific config.
 
 ## AWS Serverless Deployment
 
@@ -138,6 +138,6 @@ model, changed prompt), update the relevant README to record:
 - Click for CLIs
 - E2E tests preferred over unit tests
 - Tests use actual PDFs from `docs/` directory
-- Provider pattern for swappable model backends (Bedrock default, local alternatives)
+- All model inference via AWS Bedrock (no local alternatives)
 - `boto3` is an optional `[cloud]` dependency in docproc, rag_engine and chunker_indexer
 - Update the relevant app README when making architectural changes (see Documentation section)

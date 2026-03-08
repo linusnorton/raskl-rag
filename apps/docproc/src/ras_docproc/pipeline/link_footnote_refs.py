@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import re
 
-from ras_docproc.pipeline.extract_mupdf import MuPDFPageData, SpanInfo
+from ras_docproc.pipeline.extract_mupdf import MuPDFPageData
 from ras_docproc.schema import FootnoteRecord, FootnoteRefRecord, TextBlockRecord
 from ras_docproc.utils.hashing import make_block_id, text_hash
 
@@ -105,8 +105,15 @@ def link_footnote_refs(
             mupdf_page = mupdf_data.get(page_num)
             if mupdf_page:
                 _find_superscript_refs(
-                    block, mupdf_page, page_fn_numbers, all_fn_numbers, fn_index, fn_by_number,
-                    page_num, doc_id, all_refs,
+                    block,
+                    mupdf_page,
+                    page_fn_numbers,
+                    all_fn_numbers,
+                    fn_index,
+                    fn_by_number,
+                    page_num,
+                    doc_id,
+                    all_refs,
                 )
 
     # Deduplicate refs by (parent_block_id, footnote_number)
@@ -135,9 +142,12 @@ def apply_ref_markup(
     """
     # Match types that need [ref:N] markup inserted
     _MARKUP_MATCH_TYPES = {
-        "regex_superscript", "regex_superscript_xpage",
-        "regex_period_superscript", "regex_period_superscript_xpage",
-        "superscript_span", "superscript_span_xpage",
+        "regex_superscript",
+        "regex_superscript_xpage",
+        "regex_period_superscript",
+        "regex_period_superscript_xpage",
+        "superscript_span",
+        "superscript_span_xpage",
     }
 
     # Index refs by parent block id
@@ -234,9 +244,7 @@ def _find_superscript_refs(
             and span.bbox.y0 >= block.bbox.y0 - 5
             and span.bbox.y1 <= block.bbox.y1 + 5
         ):
-            ref_id = make_block_id(
-                doc_id, page_num, f"ss-{block.block_id}", match_type, text_hash(str(num))
-            )
+            ref_id = make_block_id(doc_id, page_num, f"ss-{block.block_id}", match_type, text_hash(str(num)))
             all_refs.append(
                 FootnoteRefRecord(
                     ref_id=ref_id,

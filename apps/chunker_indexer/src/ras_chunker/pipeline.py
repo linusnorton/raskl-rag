@@ -61,7 +61,7 @@ def run_index(doc_id: str, config: ChunkerConfig) -> None:
         return
 
     # Embed
-    console.print(f"Embedding {len(chunks)} chunks via {config.embed_base_url} ...")
+    console.print(f"Embedding {len(chunks)} chunks via Bedrock ({config.bedrock_embed_model_id}) ...")
     embeddings = embed_chunks(chunks, config)
     console.print(f"[green]Embedded {len(embeddings)} chunks[/green]")
 

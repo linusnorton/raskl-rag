@@ -32,6 +32,6 @@ FORCE_FLAG=""
 
 step "Processing all PDFs with Qwen3 VL (Bedrock, $WORKERS workers)"
 echo "  docs-dir: $DOCS_DIR"
-uv run ras-docproc run-all --docs-dir "$DOCS_DIR" --workers "$WORKERS" --backend qwen3vl $FORCE_FLAG || true
+uv run ras-docproc run-all --docs-dir "$DOCS_DIR" --workers "$WORKERS" $FORCE_FLAG || true
 
 ok "PDF processing complete"

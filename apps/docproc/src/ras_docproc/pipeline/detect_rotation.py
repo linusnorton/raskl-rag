@@ -66,7 +66,9 @@ def detect_rotation(
             rotations[page_num] = pr.suggested_rotation_cw
             logger.info(
                 "Page %d: vertical_text_ratio=%.2f, suggested_rotation=%d°",
-                page_num, ratio, pr.suggested_rotation_cw,
+                page_num,
+                ratio,
+                pr.suggested_rotation_cw,
             )
 
     return page_records, rotations

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 
 from ras_docproc.config import PipelineConfig
 from ras_docproc.schema import DocumentRecord

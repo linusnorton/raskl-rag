@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 import logging
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -244,10 +243,7 @@ def extract_with_qwen3vl(config: PipelineConfig, doc_id: str) -> dict[int, list[
     blocks_by_page: dict[int, list[TextBlockRecord]] = {}
 
     with ThreadPoolExecutor(max_workers=config.qwen3vl_max_workers) as executor:
-        futures = {
-            executor.submit(_process_page, config, doc_id, page_num): page_num
-            for page_num in pages_to_process
-        }
+        futures = {executor.submit(_process_page, config, doc_id, page_num): page_num for page_num in pages_to_process}
 
         for future in as_completed(futures):
             page_num = futures[future]

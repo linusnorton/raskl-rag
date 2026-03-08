@@ -3,7 +3,6 @@ name = "ras-docproc"
 version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = [
-    "docling",
     "pymupdf",
     "pillow",
     "lingua-language-detector",
@@ -13,7 +12,6 @@ dependencies = [
     "rich",
     "tqdm",
     "jinja2",
-    "httpx",
 ]
 
 [project.scripts]

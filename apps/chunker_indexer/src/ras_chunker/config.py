@@ -20,17 +20,12 @@ class ChunkerConfig(BaseSettings):
     max_chunk_tokens: int = 512
     min_chunk_tokens: int = 0
 
-    # Provider selection
-    embed_provider: str = "vllm"  # "vllm" or "bedrock"
-
-    # Embedding (vLLM backend)
-    embed_base_url: str = "http://localhost:8001"
-    embed_model: str = "./models/Qwen--Qwen3-Embedding-8B"
+    # Embedding
     embed_batch_size: int = 32
     embed_dimensions: int = 1024
-    embed_task_prefix: str = "Represent this document passage for retrieval: "
+    embed_task_prefix: str = ""
 
-    # Bedrock configuration (used when embed_provider = "bedrock")
+    # Bedrock
     bedrock_region: str = "eu-west-2"
     bedrock_embed_model_id: str = "amazon.titan-embed-text-v2:0"
 

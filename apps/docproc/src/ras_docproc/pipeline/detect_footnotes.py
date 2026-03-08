@@ -14,10 +14,10 @@ logger = logging.getLogger(__name__)
 
 # Patterns for footnote number at start of text
 FOOTNOTE_PATTERNS = [
-    re.compile(r"^(\d{1,3})\s"),         # "1 Some footnote text"
-    re.compile(r"^\((\d{1,3})\)\s*"),     # "(1) Some footnote text"
-    re.compile(r"^(\d{1,3})\.\s"),        # "1. Some footnote text"
-    re.compile(r"^(\d{1,3})\)[\s]"),      # "1) Some footnote text"
+    re.compile(r"^(\d{1,3})\s"),  # "1 Some footnote text"
+    re.compile(r"^\((\d{1,3})\)\s*"),  # "(1) Some footnote text"
+    re.compile(r"^(\d{1,3})\.\s"),  # "1. Some footnote text"
+    re.compile(r"^(\d{1,3})\)[\s]"),  # "1) Some footnote text"
 ]
 
 
@@ -66,11 +66,7 @@ def detect_footnotes(
 
             # Fallback: when bbox spans the full page (degenerate Qwen3 VL bbox),
             # zone check is meaningless — classify purely by text pattern.
-            text_fallback = (
-                not in_zone
-                and block.block_type == "paragraph"
-                and _is_full_page_bbox(block.bbox, page_h)
-            )
+            text_fallback = not in_zone and block.block_type == "paragraph" and _is_full_page_bbox(block.bbox, page_h)
 
             if not in_zone and not text_fallback:
                 continue

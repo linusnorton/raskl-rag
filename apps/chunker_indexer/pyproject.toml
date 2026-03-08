@@ -5,7 +5,6 @@ requires-python = ">=3.11"
 dependencies = [
     "psycopg[binary]>=3.1",
     "pgvector>=0.3",
-    "httpx",
     "pydantic>=2.0",
     "pydantic-settings>=2.0",
     "click",
