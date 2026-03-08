@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import time
 import uuid
 
@@ -113,8 +112,7 @@ async def chat_completions(
 
     completion_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
 
-    # Lambda buffered mode can't do real SSE streaming — always return non-streaming
-    if not request.stream or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+    if not request.stream:
         return _non_streaming_response(user_message, history, config, completion_id)
 
     return EventSourceResponse(
