@@ -61,6 +61,9 @@ class RAGConfig(BaseSettings):
     # Web search
     web_search_enabled: bool = True
 
+    # Audio (AWS Transcribe temp storage)
+    transcribe_s3_bucket: str = ""  # S3 bucket for temporary transcription files
+
     # API server
     api_port: int = 8000
     api_key: str = ""  # If set, requires Bearer token auth

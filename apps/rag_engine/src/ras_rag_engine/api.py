@@ -8,7 +8,8 @@ import os
 import time
 import uuid
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, Form, HTTPException, Request, UploadFile
+from fastapi.responses import Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
@@ -198,6 +199,130 @@ async def _stream_response(
 
     yield {"data": _build_chunk_event(completion_id, finish_reason="stop")}
     yield {"data": "[DONE]"}
+
+
+# --- Audio endpoints (AWS Transcribe + Polly) ---
+
+# OpenAI voice → Polly VoiceId mapping
+_POLLY_VOICE_MAP = {
+    "alloy": "Arthur",    # British male (neural)
+    "echo": "Brian",      # British male (neural)
+    "nova": "Amy",        # British female (neural)
+    "fable": "Zhiyu",     # Mandarin Chinese female (standard)
+    "shimmer": "Hiujin",  # Cantonese female (neural)
+    "onyx": "Kajal",      # Indian English/Hindi female (neural)
+}
+
+# Voices only available with "standard" engine (not "neural")
+_POLLY_STANDARD_ONLY = {"Zhiyu"}
+
+
+class SpeechRequest(BaseModel):
+    model: str = "tts-1"
+    input: str
+    voice: str = "alloy"
+
+
+@app.post("/v1/audio/transcriptions")
+async def transcribe_audio(
+    file: UploadFile,
+    model: str = Form("whisper-1"),
+    _auth: None = Depends(_check_auth),
+    config: RAGConfig = Depends(_get_config),
+):
+    """OpenAI-compatible STT endpoint backed by AWS Transcribe."""
+    import boto3
+
+    bucket = config.transcribe_s3_bucket
+    if not bucket:
+        raise HTTPException(status_code=500, detail="CHAT_TRANSCRIBE_S3_BUCKET not configured")
+
+    region = config.bedrock_region
+    job_id = f"stt-{uuid.uuid4().hex[:12]}"
+    ext = (file.filename or "audio.webm").rsplit(".", 1)[-1] or "webm"
+    s3_key = f"tmp/transcribe/{job_id}.{ext}"
+
+    s3 = boto3.client("s3", region_name=region)
+    transcribe = boto3.client("transcribe", region_name=region)
+
+    try:
+        # Upload audio to S3
+        audio_bytes = await file.read()
+        s3.put_object(Bucket=bucket, Key=s3_key, Body=audio_bytes)
+
+        # Map file extensions to Transcribe media formats
+        media_format_map = {"webm": "webm", "wav": "wav", "mp3": "mp3", "mp4": "mp4", "ogg": "ogg", "flac": "flac"}
+        media_format = media_format_map.get(ext, "webm")
+
+        # Start transcription job
+        transcribe.start_transcription_job(
+            TranscriptionJobName=job_id,
+            Media={"MediaFileUri": f"s3://{bucket}/{s3_key}"},
+            MediaFormat=media_format,
+            IdentifyLanguage=True,
+        )
+
+        # Poll until complete (typically 5-15s)
+        for _ in range(60):
+            resp = transcribe.get_transcription_job(TranscriptionJobName=job_id)
+            status = resp["TranscriptionJob"]["TranscriptionJobStatus"]
+            if status == "COMPLETED":
+                break
+            if status == "FAILED":
+                reason = resp["TranscriptionJob"].get("FailureReason", "unknown")
+                raise HTTPException(status_code=500, detail=f"Transcription failed: {reason}")
+            import asyncio
+
+            await asyncio.sleep(1)
+        else:
+            raise HTTPException(status_code=504, detail="Transcription timed out")
+
+        # Fetch transcript from output URI
+        import urllib.request
+
+        transcript_uri = resp["TranscriptionJob"]["Transcript"]["TranscriptFileUri"]
+        with urllib.request.urlopen(transcript_uri) as r:
+            transcript_data = json.loads(r.read())
+
+        text = transcript_data["results"]["transcripts"][0]["transcript"]
+        return {"text": text}
+
+    finally:
+        # Cleanup: delete temp S3 file and transcription job
+        try:
+            s3.delete_object(Bucket=bucket, Key=s3_key)
+        except Exception:
+            log.warning("Failed to delete temp S3 object %s/%s", bucket, s3_key)
+        try:
+            transcribe.delete_transcription_job(TranscriptionJobName=job_id)
+        except Exception:
+            log.warning("Failed to delete transcription job %s", job_id)
+
+
+@app.post("/v1/audio/speech")
+async def text_to_speech(
+    request: SpeechRequest,
+    _auth: None = Depends(_check_auth),
+    config: RAGConfig = Depends(_get_config),
+):
+    """OpenAI-compatible TTS endpoint backed by Amazon Polly."""
+    import boto3
+
+    voice_id = _POLLY_VOICE_MAP.get(request.voice, "Arthur")
+    engine = "standard" if voice_id in _POLLY_STANDARD_ONLY else "neural"
+
+    polly = boto3.client("polly", region_name=config.bedrock_region)
+    response = polly.synthesize_speech(
+        Text=request.input,
+        OutputFormat="mp3",
+        VoiceId=voice_id,
+        Engine=engine,
+    )
+
+    return Response(
+        content=response["AudioStream"].read(),
+        media_type="audio/mpeg",
+    )
 
 
 def main() -> None:
