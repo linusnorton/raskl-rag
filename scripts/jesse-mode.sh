@@ -32,6 +32,10 @@ if [[ -n "${AWS_ACCESS_KEY_ID:-}" ]]; then
 fi
 export_bedrock_env
 
+# --- Install dependencies ---
+step "Installing dependencies"
+uv sync --all-packages
+
 # --- Cleanup on exit ---
 cleanup() {
     step "Shutting down"
