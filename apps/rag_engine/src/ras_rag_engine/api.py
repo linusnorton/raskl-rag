@@ -255,12 +255,18 @@ async def transcribe_audio(
         media_format = media_format_map.get(ext, "webm")
 
         # Start transcription job
-        transcribe.start_transcription_job(
-            TranscriptionJobName=job_id,
-            Media={"MediaFileUri": f"s3://{bucket}/{s3_key}"},
-            MediaFormat=media_format,
-            IdentifyLanguage=True,
-        )
+        transcribe_kwargs = {
+            "TranscriptionJobName": job_id,
+            "Media": {"MediaFileUri": f"s3://{bucket}/{s3_key}"},
+            "MediaFormat": media_format,
+            "IdentifyLanguage": True,
+        }
+        if config.transcribe_vocabulary_name:
+            transcribe_kwargs["LanguageIdSettings"] = {
+                "en-GB": {"VocabularyName": config.transcribe_vocabulary_name},
+                "en-US": {"VocabularyName": config.transcribe_vocabulary_name},
+            }
+        transcribe.start_transcription_job(**transcribe_kwargs)
 
         # Poll until complete (typically 5-15s)
         for _ in range(60):

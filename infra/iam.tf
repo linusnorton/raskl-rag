@@ -90,6 +90,9 @@ resource "aws_iam_role_policy" "lambda_transcribe" {
         "transcribe:StartTranscriptionJob",
         "transcribe:GetTranscriptionJob",
         "transcribe:DeleteTranscriptionJob",
+        "transcribe:CreateVocabulary",
+        "transcribe:GetVocabulary",
+        "transcribe:DeleteVocabulary",
       ]
       Resource = "*"
     }]
@@ -223,6 +226,11 @@ resource "aws_iam_role_policy" "github_actions" {
       {
         Effect   = "Allow"
         Action   = ["apprunner:*"]
+        Resource = "*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["transcribe:*"]
         Resource = "*"
       },
       {

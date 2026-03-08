@@ -63,6 +63,7 @@ class RAGConfig(BaseSettings):
 
     # Audio (AWS Transcribe temp storage)
     transcribe_s3_bucket: str = ""  # S3 bucket for temporary transcription files
+    transcribe_vocabulary_name: str = ""  # AWS Transcribe custom vocabulary name
 
     # API server
     api_port: int = 8000
