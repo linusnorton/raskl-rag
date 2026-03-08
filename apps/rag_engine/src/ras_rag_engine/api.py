@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 import uuid
 
@@ -112,7 +113,12 @@ async def chat_completions(
 
     completion_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
 
-    if not request.stream:
+    # Lambda buffered mode can't relay SSE — Open WebUI sees content-type text/event-stream
+    # but receives the full body at once, then forwards raw SSE text to the browser.
+    # Force non-streaming on Lambda so Open WebUI gets application/json and handles it correctly.
+    on_lambda = bool(os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
+
+    if not request.stream or on_lambda:
         return _non_streaming_response(user_message, history, config, completion_id)
 
     return EventSourceResponse(
