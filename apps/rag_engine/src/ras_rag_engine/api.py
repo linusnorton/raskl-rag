@@ -264,7 +264,6 @@ async def transcribe_audio(
         if config.transcribe_vocabulary_name:
             transcribe_kwargs["LanguageIdSettings"] = {
                 "en-GB": {"VocabularyName": config.transcribe_vocabulary_name},
-                "en-US": {"VocabularyName": config.transcribe_vocabulary_name},
             }
         transcribe.start_transcription_job(**transcribe_kwargs)
 
