@@ -10,7 +10,7 @@ with warnings.catch_warnings():
     from duckduckgo_search import DDGS
 
 from .config import RAGConfig
-from .retriever import RetrievedChunk, retrieve
+from .retriever import RetrievedChunk, RetrievedFigure, retrieve, retrieve_figures
 
 _SEARCH_TOOL = {
     "type": "function",
@@ -26,6 +26,27 @@ _SEARCH_TOOL = {
                 "query": {
                     "type": "string",
                     "description": "A specific search query describing what information you need from the documents.",
+                }
+            },
+            "required": ["query"],
+        },
+    },
+}
+
+_FIND_IMAGES_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "find_images",
+        "description": (
+            "Search for images, figures, plates, maps, and photographs in the JMBRAS/Swettenham collection. "
+            "Use when the user asks to see or find a specific image, figure, plate, map, or photograph."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "A search query describing the image or figure you are looking for.",
                 }
             },
             "required": ["query"],
@@ -55,12 +76,12 @@ _WEB_SEARCH_TOOL = {
 }
 
 # Keep backward-compatible module-level constant (includes all tools)
-TOOL_DEFINITIONS = [_SEARCH_TOOL, _WEB_SEARCH_TOOL]
+TOOL_DEFINITIONS = [_SEARCH_TOOL, _FIND_IMAGES_TOOL, _WEB_SEARCH_TOOL]
 
 
 def get_tool_definitions(config: RAGConfig) -> list[dict]:
     """Return tool definitions based on config (web_search conditional)."""
-    tools = [_SEARCH_TOOL]
+    tools = [_SEARCH_TOOL, _FIND_IMAGES_TOOL]
     if config.web_search_enabled:
         tools.append(_WEB_SEARCH_TOOL)
     return tools
@@ -76,10 +97,19 @@ def _parse_filename_metadata(filename: str) -> tuple[str, str]:
     return "", ""
 
 
-def format_chunks_for_context(chunks: list[RetrievedChunk], start_index: int = 1) -> str:
+def format_chunks_for_context(
+    chunks: list[RetrievedChunk],
+    start_index: int = 1,
+    figures: list[RetrievedFigure] | None = None,
+) -> str:
     """Format retrieved chunks as numbered context blocks for the LLM."""
     if not chunks:
         return "(No relevant passages found.)"
+
+    # Build page→figures lookup
+    page_figures: dict[tuple[str, int], list[RetrievedFigure]] = {}
+    for fig in figures or []:
+        page_figures.setdefault((fig.doc_id, fig.page_num), []).append(fig)
 
     parts = []
     for i, c in enumerate(chunks, start=start_index):
@@ -101,7 +131,19 @@ def format_chunks_for_context(chunks: list[RetrievedChunk], start_index: int = 1
             header = f"[{i}] \"{source}\" ({year}), {pages}{heading}"
         else:
             header = f"[{i}] {source}, {pages}{heading}"
-        parts.append(f"{header}\n{c.text}")
+
+        chunk_text = f"{header}\n{c.text}"
+
+        # Append contextual figures on the same page(s)
+        seen_figs: set[str] = set()
+        for p in range(c.start_page, c.end_page + 1):
+            for fig in page_figures.get((c.doc_id, p), []):
+                if fig.figure_id not in seen_figs:
+                    seen_figs.add(fig.figure_id)
+                    caption = fig.caption or "Untitled figure"
+                    chunk_text += f"\n[Image on p.{fig.page_num}: \"{caption}\" → ![{caption}]({fig.image_url})]"
+
+        parts.append(chunk_text)
     return "\n\n".join(parts)
 
 
@@ -111,6 +153,21 @@ def _execute_search_documents(args: dict, config: RAGConfig, start_index: int = 
     chunks = retrieve(query, config)
     text = format_chunks_for_context(chunks, start_index=start_index)
     return text, chunks
+
+
+def _execute_find_images(args: dict, config: RAGConfig) -> tuple[str, list[RetrievedChunk]]:
+    """Execute an image search and return formatted results with markdown image syntax."""
+    query = args["query"]
+    figures = retrieve_figures(query, config, top_k=5)
+
+    if not figures:
+        return "No images found matching that query.", []
+
+    parts = []
+    for fig in figures:
+        caption = fig.caption or "Untitled figure"
+        parts.append(f"**{caption}** (p.{fig.page_num}, {fig.source_filename})\n![{caption}]({fig.image_url})")
+    return "\n\n".join(parts), []
 
 
 def _execute_web_search(args: dict) -> tuple[str, list[RetrievedChunk]]:
@@ -136,6 +193,8 @@ def execute_tool_call(name: str, args_json: str, config: RAGConfig, start_index:
 
     if name == "search_documents":
         return _execute_search_documents(args, config, start_index=start_index)
+    elif name == "find_images":
+        return _execute_find_images(args, config)
     elif name == "web_search":
         return _execute_web_search(args)
     else:

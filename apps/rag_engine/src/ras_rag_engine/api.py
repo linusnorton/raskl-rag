@@ -8,8 +8,10 @@ import os
 import time
 import uuid
 
-from fastapi import Depends, FastAPI, Form, HTTPException, Request, UploadFile
-from fastapi.responses import Response
+from pathlib import Path
+
+from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request, UploadFile
+from fastapi.responses import RedirectResponse, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
@@ -199,6 +201,64 @@ async def _stream_response(
 
     yield {"data": _build_chunk_event(completion_id, finish_reason="stop")}
     yield {"data": "[DONE]"}
+
+
+# --- Image serving endpoint ---
+
+
+@app.get("/v1/images/{figure_id}")
+async def get_image(
+    figure_id: str,
+    thumb: bool = Query(False),
+    _auth: None = Depends(_check_auth),
+    config: RAGConfig = Depends(_get_config),
+):
+    """Serve a figure image. Local mode returns file, Lambda mode redirects to S3 presigned URL."""
+    import psycopg
+    from pgvector.psycopg import register_vector
+
+    with psycopg.connect(config.dsn) as conn:
+        register_vector(conn)
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT f.doc_id, f.asset_path, f.thumb_path, d.s3_prefix
+                FROM figures f
+                JOIN documents d ON f.doc_id = d.doc_id
+                WHERE f.figure_id = %s
+                """,
+                (figure_id,),
+            )
+            row = cur.fetchone()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Figure not found")
+
+    doc_id, asset_path, thumb_path, s3_prefix = row
+    rel_path = thumb_path if (thumb and thumb_path) else asset_path
+
+    on_lambda = bool(os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
+
+    if on_lambda and config.s3_bucket:
+        import boto3
+
+        s3_key = f"{s3_prefix}/{rel_path}" if s3_prefix else f"processed/{doc_id}/latest/{rel_path}"
+        s3_client = boto3.client("s3", region_name=config.bedrock_region)
+        presigned_url = s3_client.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": config.s3_bucket, "Key": s3_key},
+            ExpiresIn=3600,
+        )
+        return RedirectResponse(url=presigned_url, status_code=302)
+
+    # Local mode: serve from disk
+    local_path = Path(config.data_dir) / doc_id / rel_path
+    if not local_path.is_file():
+        raise HTTPException(status_code=404, detail=f"Image file not found: {local_path}")
+
+    from fastapi.responses import FileResponse
+
+    return FileResponse(str(local_path), media_type="image/jpeg")
 
 
 # --- Audio endpoints (AWS Transcribe + Polly) ---

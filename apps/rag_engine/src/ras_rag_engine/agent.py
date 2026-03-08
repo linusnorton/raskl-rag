@@ -8,7 +8,7 @@ from collections.abc import Generator
 from .config import RAGConfig
 from .providers import get_llm_provider
 from .providers.base import LLMProvider
-from .retriever import RetrievedChunk, retrieve
+from .retriever import RetrievedChunk, RetrievedFigure, retrieve, retrieve_contextual_figures
 from .tools import execute_tool_call, format_chunks_for_context, get_tool_definitions
 
 log = logging.getLogger(__name__)
@@ -35,7 +35,8 @@ Guidelines:
 - If the context passages are insufficient, use the search_documents tool with alternative
   queries (synonyms, related terms, broader scope). For general knowledge outside the
   collection, use the web_search tool.
-- Do not invent facts. Only state what the sources say.\
+- Do not invent facts. Only state what the sources say.
+- When an image is available in the context, include it in your response using markdown: ![caption](image_url). Only include images returned by tools or provided in the context.\
 """
 
 MAX_TOOL_ROUNDS = 5
@@ -43,9 +44,9 @@ MAX_TOOL_ROUNDS = 5
 MIN_OUTPUT_TOKENS = 256
 
 
-def _build_system_prompt(chunks: list[RetrievedChunk]) -> str:
+def _build_system_prompt(chunks: list[RetrievedChunk], figures: list[RetrievedFigure] | None = None) -> str:
     """Build system prompt with initial context chunks embedded."""
-    context = format_chunks_for_context(chunks)
+    context = format_chunks_for_context(chunks, figures=figures)
     return SYSTEM_PROMPT + "\n\n---\nCONTEXT:\n" + context
 
 
@@ -81,8 +82,15 @@ def run_agent_streaming(
     initial_chunks = retrieve(user_message, config)
     all_chunks: list[RetrievedChunk] = list(initial_chunks)
 
+    # Step 1b: Retrieve contextual figures for the initial chunks
+    try:
+        contextual_figures = retrieve_contextual_figures(initial_chunks, config)
+    except Exception:
+        log.warning("Failed to retrieve contextual figures", exc_info=True)
+        contextual_figures = []
+
     # Step 2: Build messages
-    system_msg = {"role": "system", "content": _build_system_prompt(initial_chunks)}
+    system_msg = {"role": "system", "content": _build_system_prompt(initial_chunks, contextual_figures)}
     messages: list[dict] = [system_msg]
     for entry in history:
         content = entry.get("content") or ""
@@ -98,7 +106,7 @@ def run_agent_streaming(
     while input_tokens > budget and initial_chunks:
         dropped = initial_chunks.pop()  # last chunk = lowest relevance score
         log.info("Dropping chunk (score=%.3f) to fit context: %d > %d", dropped.score, input_tokens, budget)
-        messages[0] = {"role": "system", "content": _build_system_prompt(initial_chunks)}
+        messages[0] = {"role": "system", "content": _build_system_prompt(initial_chunks, contextual_figures)}
         input_tokens = llm.count_tokens(messages, tools=tool_defs)
 
     # Step 3: Tool-calling loop (non-streaming)

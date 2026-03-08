@@ -40,15 +40,17 @@ def lambda_handler(event, context):
 
         logger.info("Indexing s3://%s/%s (doc_id=%s, version=%d)", bucket, key, doc_id, version)
 
+        s3_prefix = f"processed/{doc_id}/v{version}"
+
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir = Path(tmpdir)
 
             # Download all JSONL files for this version
-            prefix = f"processed/{doc_id}/v{version}/"
+            prefix = f"{s3_prefix}/"
             _download_version(bucket, prefix, tmpdir, doc_id)
 
             # Run chunk + embed + index
-            _run_chunk_and_index(doc_id, tmpdir, version)
+            _run_chunk_and_index(doc_id, tmpdir, version, s3_prefix=s3_prefix)
             logger.info("Indexing complete: doc_id=%s v%d", doc_id, version)
 
     return {"statusCode": 200, "body": json.dumps("OK")}
@@ -72,28 +74,10 @@ def _download_version(bucket: str, prefix: str, tmpdir: Path, doc_id: str) -> No
         logger.info("Downloaded %s", key)
 
 
-def _run_chunk_and_index(doc_id: str, data_dir: Path, version: int) -> None:
+def _run_chunk_and_index(doc_id: str, data_dir: Path, version: int, *, s3_prefix: str = "") -> None:
     """Chunk, embed, and index a processed document into Neon."""
     from ras_chunker.config import ChunkerConfig
-    from ras_chunker.db import get_connection, upsert_chunks, upsert_document
-    from ras_chunker.embedder import embed_chunks
-    from ras_chunker.pipeline import load_and_chunk
+    from ras_chunker.pipeline import run_index
 
     config = ChunkerConfig(data_dir=data_dir)
-    output, chunks = load_and_chunk(doc_id, config)
-
-    if not chunks:
-        logger.warning(
-            "No chunks produced for %s — skipping DB update (stale chunks may remain)", doc_id
-        )
-        return
-
-    embeddings = embed_chunks(chunks, config)
-    logger.info("Embedded %d chunks", len(embeddings))
-
-    with get_connection(config) as conn:
-        upsert_document(conn, output.meta)
-        upsert_chunks(conn, chunks, embeddings, doc_id=doc_id, version=version)
-        conn.commit()
-
-    logger.info("Indexed %d chunks for %s v%d", len(chunks), doc_id, version)
+    run_index(doc_id, config, s3_prefix=s3_prefix, version=version)

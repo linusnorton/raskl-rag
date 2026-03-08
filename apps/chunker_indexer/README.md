@@ -32,11 +32,11 @@ ras-rag-engine  (OpenAI-compatible RAG API → Open WebUI)
 The pipeline runs in this order for each document:
 
 1. **Load** — reads `documents.jsonl`, `text_blocks.jsonl`, `footnotes.jsonl`,
-   `footnote_refs.jsonl` from docproc output
+   `footnote_refs.jsonl`, `figures.jsonl` from docproc output
 2. **Restitch** — merges paragraphs that were split across page boundaries
 3. **Chunk** — splits into retrieval-sized passages (heading-bounded, ≤512 tokens)
 4. **Embed** — generates a 1024-dimension vector for each chunk
-5. **Index** — upserts into the `documents` and `chunks` tables
+5. **Index** — upserts into the `documents`, `chunks`, and `figures` tables
 
 ## Key design decisions
 
@@ -175,7 +175,20 @@ chunks concurrently.
 retriever. Both must use the same Bedrock model ID. Mixing models produces silently poor
 retrieval because vectors from different models are not comparable.
 
-### D9 — AWS Lambda deployment
+### D9 — Figure indexing
+
+**What we chose:** Figures extracted by docproc (`figures.jsonl`) are loaded, embedded by caption
+text, and stored in a `figures` table with vector and FTS indexes. Figures with empty captions
+get a NULL embedding (skipped in vector search but still retrievable by page co-location).
+
+**Filtering:** Records with `derived_from == "rendered_clip"` (rotated text pages rendered as
+images) are excluded — these are not real figures.
+
+**Asset paths:** Stored as relative paths (e.g. `assets/p3_img0.jpg`). The serving layer resolves
+them to local disk or S3 based on environment. The `documents.s3_prefix` column stores the S3 key
+prefix (e.g. `processed/{doc_id}/v{N}`) so the image endpoint can construct the full S3 key.
+
+### D10 — AWS Lambda deployment
 
 **What we chose:** An S3-triggered Lambda handler (`lambda_handler.py`) that listens for
 `processed/{doc_id}/v{N}/documents.jsonl` uploads from the docproc Lambda. On trigger, it:
@@ -189,7 +202,7 @@ The version number from the S3 key is passed through to `upsert_chunks()` for au
 **`[cloud]` dependency:** The Lambda handler requires `boto3`, which is an optional `[cloud]`
 extra in `pyproject.toml`.
 
-### D10 — Chunk change auditing
+### D11 — Chunk change auditing
 
 **What we chose:** A `chunk_changes` table that records what changed each time a document is
 re-indexed. Each row captures: `doc_id`, `version`, `chunks_total`, `chunks_added`,
@@ -210,6 +223,7 @@ CREATE TABLE documents (
     year            INTEGER,
     page_offset     INTEGER NOT NULL DEFAULT 0,  -- audit only, already applied
     sha256_pdf      TEXT NOT NULL,
+    s3_prefix       TEXT NOT NULL DEFAULT '', -- S3 key prefix for assets (Lambda mode)
     indexed_at      TIMESTAMPTZ DEFAULT now()
 );
 
@@ -224,6 +238,17 @@ CREATE TABLE chunks (
     block_ids       TEXT[] NOT NULL,
     token_count     INTEGER NOT NULL,
     embedding       vector(1024) NOT NULL,
+    indexed_at      TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE figures (
+    figure_id       TEXT PRIMARY KEY,
+    doc_id          TEXT REFERENCES documents(doc_id) ON DELETE CASCADE,
+    page_num        INTEGER NOT NULL,
+    caption         TEXT NOT NULL DEFAULT '',
+    asset_path      TEXT NOT NULL,       -- relative: assets/p3_img0.jpg
+    thumb_path      TEXT NOT NULL DEFAULT '', -- relative: assets/p3_img0_thumb.jpg
+    embedding       vector(1024),        -- nullable: figures with empty captions get no embedding
     indexed_at      TIMESTAMPTZ DEFAULT now()
 );
 

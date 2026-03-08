@@ -86,6 +86,7 @@ query-document pair.
 **What we chose:** After the initial retrieval, the LLM can call two tools:
 
 - **`search_documents`** — search the indexed collection with a different query
+- **`find_images`** — search for figures, plates, maps, and photographs by caption
 - **`web_search`** — search the web via DuckDuckGo (for general knowledge outside the collection)
 
 The loop runs up to 5 rounds (`MAX_TOOL_ROUNDS`). Each round:
@@ -216,6 +217,7 @@ these were removed since all development now uses Bedrock via `AWS_PROFILE`.
 | `GET /` | Health check |
 | `GET /v1/models` | List available models (returns `swetbot`) |
 | `POST /v1/chat/completions` | Chat completions (streaming or buffered) |
+| `GET /v1/images/{figure_id}` | Serve figure image (local file or S3 redirect) |
 | `POST /v1/audio/transcriptions` | Speech-to-text (AWS Transcribe) |
 | `POST /v1/audio/speech` | Text-to-speech (Amazon Polly) |
 
@@ -238,7 +240,26 @@ without any custom integration code.
 - Maps OpenAI voice names to Amazon Polly voices (e.g. `alloy` → `Arthur`, `nova` → `Amy`)
 - Returns MP3 audio stream
 
-### D13 — Context passage formatting
+### D13 — Image retrieval and serving
+
+**What we chose:** Images are surfaced in two ways:
+
+1. **Contextual** — figures on the same pages as retrieved text chunks are automatically included
+   in the context with markdown image syntax, so the LLM can reference them in its response.
+2. **Explicit** — the `find_images` tool lets the LLM search figures by caption using hybrid
+   search (vector + FTS on the `figures` table), returning top 5 results with markdown URLs.
+
+**Serving:** `GET /v1/images/{figure_id}` serves images directly:
+- **Local mode:** returns the JPEG file from `data/out/{doc_id}/assets/`
+- **Lambda mode:** generates an S3 presigned URL (1h expiry) and returns a 302 redirect
+
+The `?thumb=true` query parameter serves the thumbnail instead.
+
+**Why no VL descriptions:** Captions extracted by docproc are sufficient for search. Adding
+VL-generated descriptions would increase processing cost and latency without clear retrieval
+benefit for this collection (most figures have explicit captions).
+
+### D14 — Context passage formatting
 
 **What we chose:** Retrieved chunks are formatted with citation-style headers:
 
@@ -279,6 +300,8 @@ Key environment variables (prefix `CHAT_`):
 | `CHAT_DATABASE_DSN` | _(empty)_ | Override full connection string (e.g. Neon DSN) |
 | `CHAT_API_PORT` | `8000` | API server port |
 | `CHAT_API_KEY` | _(empty)_ | Bearer token (if set, requires auth) |
+| `CHAT_S3_BUCKET` | _(empty)_ | S3 bucket for image assets (Lambda mode) |
+| `CHAT_DATA_DIR` | `data/out` | Local asset root for image serving |
 | `CHAT_TRANSCRIBE_S3_BUCKET` | _(empty)_ | S3 bucket for temp transcription files |
 | `CHAT_TRANSCRIBE_VOCABULARY_NAME` | _(empty)_ | AWS Transcribe custom vocabulary |
 

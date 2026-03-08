@@ -40,6 +40,9 @@ resource "aws_lambda_function" "chat" {
       # Web search enabled (no VPC = direct internet)
       CHAT_WEB_SEARCH_ENABLED = "true"
 
+      # Image serving (S3 bucket for figure assets)
+      CHAT_S3_BUCKET = aws_s3_bucket.docs.id
+
       # Audio (S3 bucket for Transcribe temp files + custom vocabulary)
       CHAT_TRANSCRIBE_S3_BUCKET         = aws_s3_bucket.docs.id
       CHAT_TRANSCRIBE_VOCABULARY_NAME   = aws_transcribe_vocabulary.jmbras.vocabulary_name

@@ -6,7 +6,7 @@ import psycopg
 from pgvector.psycopg import register_vector
 
 from .config import ChunkerConfig
-from .schema import Chunk, DocMeta
+from .schema import Chunk, DocMeta, FigureMeta
 
 DDL = """\
 CREATE EXTENSION IF NOT EXISTS vector;
@@ -61,6 +61,26 @@ CREATE TABLE IF NOT EXISTS chunk_changes (
 );
 
 CREATE INDEX IF NOT EXISTS idx_chunk_changes_doc ON chunk_changes(doc_id);
+
+-- Migration: add s3_prefix to existing databases
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS s3_prefix TEXT NOT NULL DEFAULT '';
+
+CREATE TABLE IF NOT EXISTS figures (
+    figure_id TEXT PRIMARY KEY,
+    doc_id TEXT REFERENCES documents(doc_id) ON DELETE CASCADE,
+    page_num INTEGER NOT NULL,
+    caption TEXT NOT NULL DEFAULT '',
+    asset_path TEXT NOT NULL,
+    thumb_path TEXT NOT NULL DEFAULT '',
+    embedding vector(1024),
+    indexed_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_figures_doc_id ON figures(doc_id);
+CREATE INDEX IF NOT EXISTS idx_figures_embedding_hnsw
+    ON figures USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 200);
+CREATE INDEX IF NOT EXISTS idx_figures_caption_fts
+    ON figures USING gin(to_tsvector('english', caption));
 """
 
 
@@ -84,8 +104,8 @@ def upsert_document(conn: psycopg.Connection, meta: DocMeta) -> None:
     """Insert or update document metadata."""
     conn.execute(
         """
-        INSERT INTO documents (doc_id, source_filename, title, author, year, page_offset, sha256_pdf)
-        VALUES (%(doc_id)s, %(source_filename)s, %(title)s, %(author)s, %(year)s, %(page_offset)s, %(sha256_pdf)s)
+        INSERT INTO documents (doc_id, source_filename, title, author, year, page_offset, sha256_pdf, s3_prefix)
+        VALUES (%(doc_id)s, %(source_filename)s, %(title)s, %(author)s, %(year)s, %(page_offset)s, %(sha256_pdf)s, %(s3_prefix)s)
         ON CONFLICT (doc_id) DO UPDATE SET
             source_filename = EXCLUDED.source_filename,
             title = EXCLUDED.title,
@@ -93,6 +113,7 @@ def upsert_document(conn: psycopg.Connection, meta: DocMeta) -> None:
             year = EXCLUDED.year,
             page_offset = EXCLUDED.page_offset,
             sha256_pdf = EXCLUDED.sha256_pdf,
+            s3_prefix = EXCLUDED.s3_prefix,
             indexed_at = now()
         """,
         meta.model_dump(),
@@ -154,3 +175,61 @@ def upsert_chunks(
             """,
             (chunk_doc_id, version, len(chunks), added, removed, text_changed, unchanged),
         )
+
+
+def upsert_figures(
+    conn: psycopg.Connection,
+    figures: list[FigureMeta],
+    embeddings: list[list[float] | None],
+) -> None:
+    """Insert or update figures with their embeddings."""
+    if not figures:
+        return
+
+    doc_id = figures[0].doc_id
+    conn.execute("DELETE FROM figures WHERE doc_id = %s", (doc_id,))
+
+    with conn.cursor() as cur:
+        for fig, embedding in zip(figures, embeddings):
+            cur.execute(
+                """
+                INSERT INTO figures (figure_id, doc_id, page_num, caption, asset_path, thumb_path, embedding)
+                VALUES (%(figure_id)s, %(doc_id)s, %(page_num)s, %(caption)s, %(asset_path)s, %(thumb_path)s, %(embedding)s)
+                """,
+                {**fig.model_dump(), "embedding": embedding},
+            )
+
+
+def get_figures_for_pages(conn: psycopg.Connection, doc_id_pages: list[tuple[str, int]]) -> list[dict]:
+    """Retrieve figures matching a list of (doc_id, page_num) pairs."""
+    if not doc_id_pages:
+        return []
+
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT f.figure_id, f.doc_id, f.page_num, f.caption, f.asset_path, f.thumb_path,
+                   d.source_filename
+            FROM figures f
+            JOIN documents d ON f.doc_id = d.doc_id
+            WHERE (f.doc_id, f.page_num) IN (SELECT unnest(%(doc_ids)s::text[]), unnest(%(pages)s::int[]))
+            """,
+            {
+                "doc_ids": [dp[0] for dp in doc_id_pages],
+                "pages": [dp[1] for dp in doc_id_pages],
+            },
+        )
+        rows = cur.fetchall()
+
+    return [
+        {
+            "figure_id": r[0],
+            "doc_id": r[1],
+            "page_num": r[2],
+            "caption": r[3],
+            "asset_path": r[4],
+            "thumb_path": r[5],
+            "source_filename": r[6],
+        }
+        for r in rows
+    ]

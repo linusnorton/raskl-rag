@@ -44,6 +44,16 @@ class _FootnoteRefRecord(BaseModel):
     footnote_id: str | None = None
 
 
+class _FigureRecord(BaseModel):
+    figure_id: str
+    doc_id: str
+    page_num_1: int
+    asset_jpg_path: str | None = None
+    asset_thumb_path: str | None = None
+    caption_text_clean: str = ""
+    derived_from: str | None = None
+
+
 def _read_jsonl(path: Path, model_class: type) -> list:
     adapter = TypeAdapter(model_class)
     records = []
@@ -86,6 +96,13 @@ class DocprocOutput:
         self.footnote_refs: list[_FootnoteRefRecord] = (
             _read_jsonl(ref_path, _FootnoteRefRecord) if ref_path.exists() else []
         )
+
+        # Load figures (optional) — filter out rendered rotated page clips
+        fig_path = doc_dir / "figures.jsonl"
+        self.figures: list[_FigureRecord] = []
+        if fig_path.exists():
+            all_figs = _read_jsonl(fig_path, _FigureRecord)
+            self.figures = [f for f in all_figs if f.derived_from != "rendered_clip"]
 
     @property
     def doc_id(self) -> str:

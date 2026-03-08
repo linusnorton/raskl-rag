@@ -44,3 +44,15 @@ class DocMeta(BaseModel):
     year: int | None = None
     page_offset: int = 0
     sha256_pdf: str
+    s3_prefix: str = ""
+
+
+class FigureMeta(BaseModel):
+    """Figure metadata for indexing."""
+
+    figure_id: str
+    doc_id: str
+    page_num: int
+    caption: str = ""
+    asset_path: str
+    thumb_path: str = ""

@@ -53,6 +53,10 @@ class RAGConfig(BaseSettings):
     transcribe_s3_bucket: str = ""  # S3 bucket for temporary transcription files
     transcribe_vocabulary_name: str = ""  # AWS Transcribe custom vocabulary name
 
+    # Image serving
+    s3_bucket: str = ""  # S3 bucket for image assets (Lambda mode)
+    data_dir: str = "data/out"  # Local asset root (local mode)
+
     # API server
     api_port: int = 8000
     api_key: str = ""  # If set, requires Bearer token auth

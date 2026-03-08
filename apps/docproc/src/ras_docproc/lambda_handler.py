@@ -130,6 +130,16 @@ def _upload_versioned_output(bucket: str, doc_id: str, data_dir: Path, tmpdir: P
             s3.upload_file(str(f), bucket, s3_key)
             logger.info("Uploaded %s", s3_key)
 
+    # Upload assets (images, thumbnails)
+    assets_dir = doc_dir / "assets"
+    if assets_dir.is_dir():
+        for asset in assets_dir.iterdir():
+            if asset.is_file():
+                s3_key = f"{s3_prefix}assets/{asset.name}"
+                content_type = "image/jpeg" if asset.suffix in (".jpg", ".jpeg") else "image/png"
+                s3.upload_file(str(asset), bucket, s3_key, ExtraArgs={"ContentType": content_type})
+                logger.info("Uploaded asset %s", s3_key)
+
     # Write version metadata
     meta = {
         "version": version,

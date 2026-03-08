@@ -60,6 +60,26 @@ def lambda_handler(event, context):
     );
 
     CREATE INDEX IF NOT EXISTS idx_chunk_changes_doc ON chunk_changes(doc_id);
+
+    -- Migration: add s3_prefix to existing databases
+    ALTER TABLE documents ADD COLUMN IF NOT EXISTS s3_prefix TEXT NOT NULL DEFAULT '';
+
+    CREATE TABLE IF NOT EXISTS figures (
+        figure_id       TEXT PRIMARY KEY,
+        doc_id          TEXT REFERENCES documents(doc_id) ON DELETE CASCADE,
+        page_num        INTEGER NOT NULL,
+        caption         TEXT NOT NULL DEFAULT '',
+        asset_path      TEXT NOT NULL,
+        thumb_path      TEXT NOT NULL DEFAULT '',
+        embedding       vector({embed_dims}),
+        indexed_at      TIMESTAMPTZ DEFAULT now()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_figures_doc_id ON figures(doc_id);
+    CREATE INDEX IF NOT EXISTS idx_figures_embedding_hnsw
+        ON figures USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 200);
+    CREATE INDEX IF NOT EXISTS idx_figures_caption_fts
+        ON figures USING gin(to_tsvector('english', caption));
     """
 
     conn = psycopg2.connect(dsn)

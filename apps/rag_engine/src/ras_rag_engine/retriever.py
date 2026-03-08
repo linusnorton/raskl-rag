@@ -15,6 +15,17 @@ log = logging.getLogger(__name__)
 
 
 @dataclass
+class RetrievedFigure:
+    figure_id: str
+    doc_id: str
+    page_num: int
+    caption: str
+    image_url: str
+    thumb_url: str
+    source_filename: str
+
+
+@dataclass
 class RetrievedChunk:
     chunk_id: str
     doc_id: str
@@ -145,3 +156,105 @@ def retrieve(query: str, config: RAGConfig, top_k: int | None = None) -> list[Re
         chunks = rerank(query, chunks, config, top_k=top_k)
 
     return chunks
+
+
+def retrieve_contextual_figures(chunks: list[RetrievedChunk], config: RAGConfig) -> list[RetrievedFigure]:
+    """Retrieve figures on the same pages as the given chunks."""
+    doc_id_pages: set[tuple[str, int]] = set()
+    for c in chunks:
+        for p in range(c.start_page, c.end_page + 1):
+            doc_id_pages.add((c.doc_id, p))
+
+    if not doc_id_pages:
+        return []
+
+    pairs = list(doc_id_pages)
+    with psycopg.connect(config.dsn) as conn:
+        register_vector(conn)
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT f.figure_id, f.doc_id, f.page_num, f.caption, f.asset_path, f.thumb_path,
+                       d.source_filename
+                FROM figures f
+                JOIN documents d ON f.doc_id = d.doc_id
+                WHERE (f.doc_id, f.page_num) IN (SELECT unnest(%(doc_ids)s::text[]), unnest(%(pages)s::int[]))
+                """,
+                {"doc_ids": [p[0] for p in pairs], "pages": [p[1] for p in pairs]},
+            )
+            rows = cur.fetchall()
+
+    return [
+        RetrievedFigure(
+            figure_id=r[0],
+            doc_id=r[1],
+            page_num=r[2],
+            caption=r[3],
+            image_url=f"/v1/images/{r[0]}",
+            thumb_url=f"/v1/images/{r[0]}?thumb=true",
+            source_filename=r[6],
+        )
+        for r in rows
+    ]
+
+
+_FIGURE_SEARCH_SQL = """\
+WITH vector_results AS (
+    SELECT figure_id, doc_id, page_num, caption, asset_path, thumb_path,
+           ROW_NUMBER() OVER (ORDER BY embedding <=> %(vec)s::vector) AS vrank
+    FROM figures
+    WHERE embedding IS NOT NULL
+    ORDER BY embedding <=> %(vec)s::vector
+    LIMIT 30
+),
+text_results AS (
+    SELECT figure_id,
+           ROW_NUMBER() OVER (ORDER BY ts_rank(to_tsvector('english', caption), plainto_tsquery('english', %(query)s)) DESC) AS trank
+    FROM figures
+    WHERE to_tsvector('english', caption) @@ plainto_tsquery('english', %(query)s)
+    LIMIT 30
+),
+fused AS (
+    SELECT v.figure_id, v.doc_id, v.page_num, v.caption,
+           COALESCE(1.0 / (60 + v.vrank), 0) + COALESCE(1.0 / (60 + t.trank), 0) AS rrf_score
+    FROM vector_results v
+    LEFT JOIN text_results t ON v.figure_id = t.figure_id
+    UNION
+    SELECT f.figure_id, f.doc_id, f.page_num, f.caption,
+           COALESCE(1.0 / (60 + t.trank), 0) AS rrf_score
+    FROM text_results t
+    JOIN figures f ON t.figure_id = f.figure_id
+    WHERE t.figure_id NOT IN (SELECT figure_id FROM vector_results)
+)
+SELECT fused.figure_id, fused.doc_id, fused.page_num, fused.caption,
+       d.source_filename, fused.rrf_score
+FROM fused
+JOIN documents d ON fused.doc_id = d.doc_id
+ORDER BY fused.rrf_score DESC
+LIMIT %(top_k)s
+"""
+
+
+def retrieve_figures(query: str, config: RAGConfig, top_k: int = 5) -> list[RetrievedFigure]:
+    """Search for figures using hybrid search (vector + FTS on captions)."""
+    vec = embed_query(query, config)
+    vec_str = "[" + ",".join(str(x) for x in vec) + "]"
+
+    with psycopg.connect(config.dsn) as conn:
+        register_vector(conn)
+        with conn.cursor() as cur:
+            cur.execute(_FIGURE_SEARCH_SQL, {"vec": vec_str, "query": query, "top_k": top_k})
+            rows = cur.fetchall()
+
+    return [
+        RetrievedFigure(
+            figure_id=row[0],
+            doc_id=row[1],
+            page_num=row[2],
+            caption=row[3],
+            image_url=f"/v1/images/{row[0]}",
+            thumb_url=f"/v1/images/{row[0]}?thumb=true",
+            source_filename=row[4],
+        )
+        for row in rows
+    ]
