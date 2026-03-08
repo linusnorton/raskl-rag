@@ -69,6 +69,7 @@ resource "aws_apprunner_service" "open_webui" {
           WEBUI_AUTH            = "true"
           AIOHTTP_CLIENT_TIMEOUT          = "300"
           ENABLE_EVALUATION_ARENA_MODELS  = "false"
+          ENABLE_WEBSOCKET_SUPPORT        = "false"
           DATABASE_URL                    = local.neon_open_webui_dsn
         }
       }
