@@ -29,12 +29,12 @@ def _make_chunk_id(doc_id: str, chunk_index: int) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:24]
 
 
-def _build_footnote_map(output: DocprocOutput) -> dict[int, str]:
-    """Map footnote_number → cleaned footnote text."""
-    result: dict[int, str] = {}
+def _build_footnote_map(output: DocprocOutput) -> dict[str, tuple[int, str]]:
+    """Map footnote_id → (footnote_number, cleaned text)."""
+    result: dict[str, tuple[int, str]] = {}
     for fn in output.footnotes:
         text = fn.text_clean if fn.text_clean else fn.text_raw
-        result[fn.footnote_number] = text.strip()
+        result[fn.footnote_id] = (fn.footnote_number, text.strip())
     return result
 
 
@@ -104,7 +104,7 @@ def chunk_blocks(
     for i, raw in enumerate(merged):
         # Collect footnote texts for blocks in this chunk
         all_refs = sorted({ref for b in raw.blocks for ref in b.footnote_refs})
-        footnote_texts = [f"[{n}] {footnote_map[n]}" for n in all_refs if n in footnote_map]
+        footnote_texts = [f"[{footnote_map[fid][0]}] {footnote_map[fid][1]}" for fid in all_refs if fid in footnote_map]
 
         text = _format_chunk_text(raw.heading, [b.text for b in raw.blocks], footnote_texts)
         token_count = _estimate_tokens(text)

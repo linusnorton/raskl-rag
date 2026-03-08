@@ -146,10 +146,11 @@ class TestRestitchFootnoteRefs:
                 page_num_1=1,
                 parent_block_id="blk-1",
                 footnote_number=1,
+                footnote_id="fn-abc",
             )
         ]
         result = restitch(_make_output(blocks, refs))
-        assert result[0].footnote_refs == [1]
+        assert result[0].footnote_refs == ["fn-abc"]
 
     def test_merged_blocks_combine_refs(self):
         blocks = [
@@ -157,9 +158,9 @@ class TestRestitchFootnoteRefs:
             _make_block(2, 0, "second part with ref.", block_id="blk-2"),
         ]
         refs = [
-            _FootnoteRefRecord(ref_id="r1", doc_id="test-doc", page_num_1=1, parent_block_id="blk-1", footnote_number=1),
-            _FootnoteRefRecord(ref_id="r2", doc_id="test-doc", page_num_1=2, parent_block_id="blk-2", footnote_number=3),
+            _FootnoteRefRecord(ref_id="r1", doc_id="test-doc", page_num_1=1, parent_block_id="blk-1", footnote_number=1, footnote_id="fn-aaa"),
+            _FootnoteRefRecord(ref_id="r2", doc_id="test-doc", page_num_1=2, parent_block_id="blk-2", footnote_number=3, footnote_id="fn-bbb"),
         ]
         result = restitch(_make_output(blocks, refs))
         assert len(result) == 1
-        assert result[0].footnote_refs == [1, 3]
+        assert result[0].footnote_refs == ["fn-aaa", "fn-bbb"]

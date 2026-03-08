@@ -21,6 +21,11 @@ FOOTNOTE_PATTERNS = [
 ]
 
 
+def _is_full_page_bbox(bbox: BBox, page_h: float, tol: float = 2.0) -> bool:
+    """Check if bbox spans the full page height (degenerate Qwen3 VL bbox)."""
+    return bbox.y0 < tol and bbox.y1 > page_h - tol
+
+
 def detect_footnotes(
     blocks_by_page: dict[int, list[TextBlockRecord]],
     page_heights: dict[int, float],
@@ -57,7 +62,17 @@ def detect_footnotes(
                 continue
 
             # Check if block is in footnote zone
-            if not is_in_zone(block.bbox, page_h, config.footnote_zone_top, config.footnote_zone_bottom):
+            in_zone = is_in_zone(block.bbox, page_h, config.footnote_zone_top, config.footnote_zone_bottom)
+
+            # Fallback: when bbox spans the full page (degenerate Qwen3 VL bbox),
+            # zone check is meaningless — classify purely by text pattern.
+            text_fallback = (
+                not in_zone
+                and block.block_type == "paragraph"
+                and _is_full_page_bbox(block.bbox, page_h)
+            )
+
+            if not in_zone and not text_fallback:
                 continue
 
             text = block.text_clean or block.text_raw

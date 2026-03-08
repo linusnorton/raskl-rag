@@ -7,7 +7,7 @@ search. It does three things:
 
 1. **Chunk** — splits document text into passages sized for retrieval (heading-aware, cross-page
    stitching, footnotes inlined)
-2. **Embed** — converts each passage to a numeric vector using an embedding model
+2. **Embed** — converts each passage to a 1024-dimension vector using AWS Bedrock (Titan Embed v2)
 3. **Index** — stores the text and vectors in PostgreSQL (with the pgvector extension) for hybrid
    search
 
@@ -54,7 +54,7 @@ A chunk that starts mid-sentence is harder to understand in isolation, produces 
 representation, and looks odd when cited in the chat UI. Headings are natural semantic boundaries
 in academic writing: a new heading signals a new topic.
 
-**Why 512 tokens:** The embedding models used (Qwen3-Embedding-8B and BGE-M3) have context windows
+**Why 512 tokens:** Embedding models (including Amazon Titan Embed v2) have context windows
 in the range of 512–8192 tokens, but embedding quality degrades for very long inputs. 512 tokens
 gives a passage long enough to carry meaningful context while fitting comfortably in the model's
 effective range. It also means many chunks fit in the LLM's prompt window, so more context is
@@ -106,6 +106,11 @@ context together.
 
 The footnote numbers in the inlined text correspond to the `[ref:N]` markers in the body text,
 so the relationship between claim and footnote is preserved in the chunk text itself.
+
+**Footnote keying:** The footnote map is keyed by `footnote_id` (a unique content-based hash),
+not `footnote_number`. Many historical documents use per-page footnote numbering, so the same
+number (e.g. footnote 12) can appear on multiple pages. Keying by number caused collisions
+where only the last footnote with a given number survived in the map.
 
 ### D4 — Hybrid search: vector + full-text with Reciprocal Rank Fusion
 
@@ -169,24 +174,10 @@ is the simpler, better-performing choice.
 
 ### D6 — Task-specific embedding prefixes
 
-**What we chose:** Document chunks are embedded with:
-```
-"Represent this document passage for retrieval: "
-```
-
-Query strings are embedded with:
-```
-"Represent this query for retrieving relevant passages: "
-```
-
-**Why:** The Qwen3-Embedding-8B model is trained to distinguish between document-type and
-query-type inputs. The prefix tells the model which mode to use, and the model encodes documents
-and queries into compatible but non-identical vector spaces optimised for retrieval. Omitting the
-prefix or using the wrong prefix measurably reduces retrieval quality with this model family.
-
-**Bedrock Titan Embed v2:** Task prefixes are set to empty string (`""`) when using Bedrock. The
-chunker's `CHUNKER_EMBED_TASK_PREFIX` must match whatever prefix was used when the collection was
-indexed — mixing prefixes between indexing and query time will produce poor results.
+**What we chose:** The task prefix defaults to empty string (`""`), which is correct for Bedrock
+Titan Embed v2. The chunker's `CHUNKER_EMBED_TASK_PREFIX` must match whatever prefix was used
+when the collection was indexed — mixing prefixes between indexing and query time will produce
+poor results.
 
 ### D7 — Page offset stored but not re-applied
 
@@ -207,8 +198,6 @@ applied), but display code must use `start_page` directly without adding the off
 **What we chose:** Embedding uses AWS Bedrock (Amazon Titan Embed Text v2) via boto3. Titan
 embeds one text per API call; the provider uses a `ThreadPoolExecutor` (10 workers) to embed
 chunks concurrently.
-
-Selected via `CHUNKER_EMBED_PROVIDER="bedrock"`.
 
 **Important:** The embedding model used by the chunker must match the model used by the chat UI's
 retriever. Both must use the same Bedrock model ID. Mixing models produces silently poor
@@ -285,13 +274,14 @@ Key environment variables (prefix `CHUNKER_`):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CHUNKER_EMBED_PROVIDER` | `bedrock` | `"bedrock"` (or `"vllm"` for legacy local use) |
+| `CHUNKER_EMBED_BATCH_SIZE` | `32` | Number of chunks per embedding batch |
+| `CHUNKER_EMBED_DIMENSIONS` | `1024` | Embedding vector dimensions |
 | `CHUNKER_EMBED_TASK_PREFIX` | `""` | Must match chat UI embed prefix |
 | `CHUNKER_MAX_CHUNK_TOKENS` | `512` | Maximum tokens per chunk |
 | `CHUNKER_RESTITCH_ENABLED` | `true` | Enable cross-page paragraph merging |
 | `CHUNKER_DB_NAME` | `raskl_rag` | PostgreSQL database name |
 | `CHUNKER_DATABASE_DSN` | _(empty)_ | Override full connection string (e.g. Neon DSN) |
-| `CHUNKER_BEDROCK_REGION` | `eu-west-2` | AWS region for Bedrock (bedrock provider only) |
+| `CHUNKER_BEDROCK_REGION` | `eu-west-2` | AWS region for Bedrock |
 | `CHUNKER_BEDROCK_EMBED_MODEL_ID` | `amazon.titan-embed-text-v2:0` | Bedrock embedding model ID |
 
 See root `CLAUDE.md` for all CLI commands.

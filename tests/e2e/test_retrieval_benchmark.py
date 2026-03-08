@@ -81,7 +81,6 @@ class TestBenchmark:
         )
         assert "Ibrahim" in answer, f"Expected 'Sultan Ibrahim' in answer:\n{answer}"
 
-    @pytest.mark.xfail(reason="Footnote text not yet surfaced by retrieval — known gap")
     def test_q2_mantri_tin_duties(self, config: ChatConfig):
         """Q2: Footnote Anchor — Mantri of Perak's tin duty income.
 

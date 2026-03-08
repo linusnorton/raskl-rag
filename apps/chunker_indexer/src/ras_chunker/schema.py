@@ -17,7 +17,7 @@ class StitchedBlock(BaseModel):
     section_path: str | None = None
     lang: str | None = None
     reading_order: int = 0
-    footnote_refs: list[int] = Field(default_factory=list)
+    footnote_refs: list[str] = Field(default_factory=list)
 
 
 class Chunk(BaseModel):

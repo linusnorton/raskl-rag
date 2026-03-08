@@ -26,9 +26,9 @@ def _best_text(block: _TextBlock) -> str:
     return block.text_clean if block.text_clean else block.text_raw
 
 
-def _collect_footnote_refs(block_id: str, output: DocprocOutput) -> list[int]:
-    """Return sorted list of footnote numbers referenced by a block."""
-    return sorted({r.footnote_number for r in output.footnote_refs if r.parent_block_id == block_id})
+def _collect_footnote_refs(block_id: str, output: DocprocOutput) -> list[str]:
+    """Return sorted list of footnote IDs referenced by a block."""
+    return sorted({r.footnote_id for r in output.footnote_refs if r.parent_block_id == block_id and r.footnote_id})
 
 
 def restitch(output: DocprocOutput) -> list[StitchedBlock]:

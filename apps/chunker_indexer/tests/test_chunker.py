@@ -14,7 +14,7 @@ def _sb(
     text: str,
     block_type: str = "paragraph",
     page: int = 1,
-    footnote_refs: list[int] | None = None,
+    footnote_refs: list[str] | None = None,
     block_id: str | None = None,
 ) -> StitchedBlock:
     bid = block_id or f"blk-{hash(text) & 0xFFFFFF:06x}"
@@ -107,7 +107,7 @@ class TestChunkBoundaries:
 class TestFootnoteInlining:
     def test_footnotes_appended_to_chunk(self):
         blocks = [
-            _sb("Text with reference.", footnote_refs=[1, 2]),
+            _sb("Text with reference.", footnote_refs=["fn1", "fn2"]),
         ]
         footnotes = [
             _FootnoteRecord(footnote_id="fn1", doc_id="test-doc", page_num_1=1, footnote_number=1, text_raw="First note.", text_clean="First note."),

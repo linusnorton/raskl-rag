@@ -84,7 +84,6 @@ def detect_boilerplate(
             if not is_boilerplate:
                 text_normalized = re.sub(r"[^\w\s]", "", block.text_clean.strip()).strip().upper()
                 is_boilerplate = text_normalized in {p.upper() for p in PLATFORM_HEADINGS}
-                is_boilerplate = True
 
             # Also remove header/footer zone blocks from short documents less aggressively
             if block.block_type in ("header", "footer"):

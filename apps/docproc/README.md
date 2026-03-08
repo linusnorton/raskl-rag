@@ -41,7 +41,7 @@ and writes an augmented version forward. The final stage writes JSONL files to d
 | # | Stage | What it does |
 |---|-------|-------------|
 | 1 | Inventory | Discovers the PDF, computes its SHA256 hash, generates a `doc_id` |
-| 2 | Extract (Docling or DeepSeek) | Extracts structured text blocks from the PDF |
+| 2 | Extract (Qwen3 VL) | Extracts structured text blocks from the PDF via Bedrock |
 | 3 | Extract (MuPDF) | Low-level extraction: fonts, span data, images, raw metadata |
 | 4 | Extract Metadata | Parses the JSTOR/MUSE cover page for title, author, year, DOI, journal pages |
 | 5 | Normalize Text | NFKC normalization, dehyphenation, superscript cleanup |
@@ -59,25 +59,18 @@ and writes an augmented version forward. The final stage writes JSONL files to d
 
 ## Key design decisions
 
-### D1 — Three extraction backends: Docling, DeepSeek-OCR, Qwen3 VL
+### D1 — Extraction via Qwen3 VL (Bedrock)
 
-**What we chose:** Three backends, each suited to a different deployment:
+**What we chose:** A single extraction backend using the Qwen3-VL-235B vision-language model via
+AWS Bedrock's Converse API. Each page is rendered as a PNG at 300 DPI, sent to the model, and
+the response is parsed into structured text blocks. Pages are processed in parallel (default 10
+workers). Since Qwen3 VL returns Markdown text without spatial coordinates, blocks are assigned
+full-page degenerate bounding boxes.
 
-- **Docling** — for clean born-digital PDFs. Fast, gives semantically labelled output (headings,
-  paragraphs, tables) but struggles with poor-quality scans.
-- **DeepSeek-OCR** — for messy/scanned PDFs via a locally-hosted vLLM server. A vision-language
-  model that reads the page as an image and transcribes it — slower but accurate on old,
-  low-contrast, or unevenly-lit document scans.
-- **Qwen3 VL** — for messy/scanned PDFs via AWS Bedrock. Uses the Qwen3-VL-235B vision model
-  through the Bedrock Converse API. Pages are rendered as PNG and processed in parallel (default
-  10 workers). This is the backend used by the Lambda deployment.
-
-**Auto-detection (local):** If the PDF path contains `/messy/`, the pipeline uses DeepSeek;
-otherwise it uses Docling. Override with `--backend docling|deepseek|qwen3vl`.
-
-**Coordinate systems differ:** Docling uses bottom-left origin coordinates; DeepSeek-OCR uses
-0–999 normalised coordinates. The pipeline converts both to a common internal representation.
-Qwen3 VL returns Markdown text without coordinates — blocks are assigned full-page bounding boxes.
+**Why a single backend:** Earlier versions supported Docling (for clean PDFs) and DeepSeek-OCR
+(for messy scans via local vLLM). In practice, Qwen3 VL handles both clean and messy PDFs well
+enough that maintaining multiple backends added complexity without benefit. The legacy backends
+were removed.
 
 ### D2 — Page offset correction
 
@@ -125,7 +118,10 @@ passages.
 **What we chose:** A dual approach combining regex patterns with font-size analysis from MuPDF.
 
 **Footnote detection:** Blocks in the bottom 28% of the page (below the 72% mark) that start
-with a numeric pattern are classified as footnotes:
+with a numeric pattern are classified as footnotes. When a block has a full-page bounding box
+(y0 ≈ 0, y1 ≈ page height) — as produced by Qwen3 VL — the zone check is skipped and
+classification relies purely on text pattern matching. This prevents footnotes from being
+missed when the extraction backend assigns degenerate bboxes to all blocks.
 
 - `1 Some text` — number then space
 - `(1) Some text` — parentheses
@@ -209,8 +205,6 @@ All variables use the `DOCPROC_` prefix. The most commonly needed ones:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `DOCPROC_OUT_DIR` | `data` | Root output directory |
-| `DOCPROC_EXTRACTION_BACKEND` | `docling` | `"docling"`, `"deepseek"`, or `"qwen3vl"` |
-| `DOCPROC_VLLM_BASE_URL` | `http://localhost:8000` | vLLM server (DeepSeek backend only) |
 | `DOCPROC_BOILERPLATE_THRESHOLD` | `0.3` | Fraction of pages a line must appear on to be boilerplate |
 | `DOCPROC_FOOTER_ZONE_TOP` | `0.80` | Top of footer zone (fraction of page height from top) |
 | `DOCPROC_HEADER_ZONE_BOTTOM` | `0.10` | Bottom of header zone (fraction of page height from top) |
