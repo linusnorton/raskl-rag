@@ -1,19 +1,11 @@
 
+# Tuning
+
+ - Thinking budget might need to be increased?
+ - Drop temperature to 0.4?
+ - System prompt
+
 # RAG Quality — Remaining Action Items
-
-## Retrieval diagnostics / observability
-
-**Problem:** When the system gives a wrong answer, there's no easy way to see what
-chunks were retrieved, how they scored, and what the reranker did.
-
-**Recommendations:**
-- **Structured logging:** Log the full retrieval pipeline per query:
-  query → embedding time → top-30 RRF scores → rerank scores → final top-10.
-  Use structured JSON logs that can be queried in CloudWatch.
-- **Debug endpoint:** Add a `/debug` route to the Gradio app (behind a flag) that
-  shows the retrieval results alongside the chat response.
-- **Eval harness:** Build a small set of known Q&A pairs and run them as a regression
-  test after re-indexing.
 
 ## Hybrid search weight tuning
 

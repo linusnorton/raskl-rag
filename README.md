@@ -1,7 +1,7 @@
-# raskl-rag
+# SwetBot
 
 A pipeline for processing historical JMBRAS (Journal of the Malayan Branch of the Royal Asiatic
-Society) and Swettenham PDFs into a searchable RAG (Retrieval-Augmented Generation) system with an
+Society) and other historical PDFs into a searchable RAG (Retrieval-Augmented Generation) system with an
 Open WebUI chat interface.
 
 ## Repository structure
@@ -12,7 +12,6 @@ apps/
   chunker_indexer/  JSONL → chunks → embeddings → PostgreSQL/pgvector
   rag_engine/       OpenAI-compatible RAG API (FastAPI + Bedrock)
 infra/              Terraform for AWS serverless deployment
-docker/             Dockerfiles for Lambda containers
 scripts/            Shell scripts for local development workflows
 ```
 
@@ -88,16 +87,6 @@ See [`DEPLOYMENT.md`](DEPLOYMENT.md) for full details. The serverless stack uses
 - GitHub Actions for deploy-on-push
 
 ---
-
-## Diagnostic scripts
-
-```bash
-# Diagnose RAG pipeline (embedding → retrieval → reranking → LLM) step by step
-uv run python scripts/diagnose_rag.py --query "What dates did Swettenham go to Singapore?"
-
-# Migrate local DB chunks to Neon with Bedrock re-embedding
-uv run python scripts/migrate_to_neon.py --dry-run
-```
 
 ## HTML debug reports
 
