@@ -209,7 +209,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: production
-      url: ${{ steps.urls.outputs.upload_url }}
+      url: ${{ steps.urls.outputs.open_webui_url }}
     steps:
       - uses: actions/checkout@v4
 
@@ -309,5 +309,5 @@ jobs:
       - name: Get deployment URLs
         id: urls
         run: |
-          API_URL=$(aws apigatewayv2 get-apis --query "Items[?Name=='raskl-api'].ApiEndpoint" --output text)
-          echo "upload_url=${API_URL}" >> "$GITHUB_OUTPUT"
+          OPEN_WEBUI_URL=$(aws apprunner list-services --query "ServiceSummaryList[?ServiceName=='raskl-open-webui'].ServiceUrl" --output text)
+          echo "open_webui_url=https://${OPEN_WEBUI_URL}" >> "$GITHUB_OUTPUT"
