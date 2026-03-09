@@ -20,13 +20,14 @@ RETRY_BASE_DELAY = 5  # seconds
 
 
 MAX_IMAGE_BYTES = 3_700_000  # 3.7 MB — just under Bedrock's 3.75 MB per-image limit
-DPI_FALLBACKS = (200, 150, 100)  # DPI steps to try if the image is too large
+JPEG_QUALITY = 85
+DPI_FALLBACKS = (200, 150)  # DPI steps to try if JPEG is still too large (unlikely)
 
 
-def _render_page_to_png_bytes(pdf_path: str, page_index: int, dpi: int) -> tuple[bytes, float, float]:
-    """Render a PDF page to PNG bytes, reducing DPI if needed to stay under Bedrock's size limit.
+def _render_page_to_image_bytes(pdf_path: str, page_index: int, dpi: int) -> tuple[bytes, float, float]:
+    """Render a PDF page to JPEG bytes, reducing DPI if needed to stay under Bedrock's size limit.
 
-    Returns (png_bytes, page_width_pts, page_height_pts).
+    Returns (jpeg_bytes, page_width_pts, page_height_pts).
     """
     doc = fitz.open(pdf_path)
     try:
@@ -38,16 +39,16 @@ def _render_page_to_png_bytes(pdf_path: str, page_index: int, dpi: int) -> tuple
             zoom = current_dpi / 72.0
             mat = fitz.Matrix(zoom, zoom)
             pix = page.get_pixmap(matrix=mat)
-            png_bytes = pix.tobytes("png")
-            logger.debug("Page %d: %d DPI → %d bytes (limit %d)", page_index + 1, current_dpi, len(png_bytes), MAX_IMAGE_BYTES)
-            if len(png_bytes) <= MAX_IMAGE_BYTES:
+            img_bytes = pix.tobytes("jpeg", jpg_quality=JPEG_QUALITY)
+            logger.debug("Page %d: %d DPI JPEG Q%d → %d bytes (limit %d)", page_index + 1, current_dpi, JPEG_QUALITY, len(img_bytes), MAX_IMAGE_BYTES)
+            if len(img_bytes) <= MAX_IMAGE_BYTES:
                 if current_dpi != dpi:
-                    logger.info("Page %d: reduced DPI from %d to %d (%d bytes)", page_index + 1, dpi, current_dpi, len(png_bytes))
-                return png_bytes, page_width, page_height
+                    logger.info("Page %d: reduced DPI from %d to %d (%d bytes)", page_index + 1, dpi, current_dpi, len(img_bytes))
+                return img_bytes, page_width, page_height
 
         # Last resort: use lowest DPI even if still over limit
-        logger.warning("Page %d: image still %d bytes at %d DPI", page_index + 1, len(png_bytes), DPI_FALLBACKS[-1])
-        return png_bytes, page_width, page_height
+        logger.warning("Page %d: image still %d bytes at %d DPI", page_index + 1, len(img_bytes), DPI_FALLBACKS[-1])
+        return img_bytes, page_width, page_height
     finally:
         doc.close()
 
@@ -77,7 +78,7 @@ def _call_bedrock(
                         "content": [
                             {
                                 "image": {
-                                    "format": "png",
+                                    "format": "jpeg",
                                     "source": {"bytes": image_bytes},
                                 },
                             },
@@ -231,13 +232,13 @@ def _process_page(
     page_idx = page_num - 1
     pdf_path = str(config.pdf_path)
 
-    png_bytes, page_width, page_height = _render_page_to_png_bytes(pdf_path, page_idx, config.qwen3vl_dpi)
-    logger.debug("Qwen3 VL: page %d rendered (%d bytes)", page_num, len(png_bytes))
+    img_bytes, page_width, page_height = _render_page_to_image_bytes(pdf_path, page_idx, config.qwen3vl_dpi)
+    logger.debug("Qwen3 VL: page %d rendered (%d bytes)", page_num, len(img_bytes))
 
     markdown = _call_bedrock(
         config.bedrock_region,
         config.bedrock_ocr_model_id,
-        png_bytes,
+        img_bytes,
         config.qwen3vl_max_tokens,
         config.qwen3vl_system_prompt,
     )
