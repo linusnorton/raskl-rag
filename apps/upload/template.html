@@ -162,7 +162,7 @@
 
     async function pollStatus(pw) {
       try {
-        const resp = await fetch(`/upload/status?password=${encodeURIComponent(pw)}`);
+        const resp = await fetch("/upload/status", {headers: {"X-Password": pw}});
         if (!resp.ok) return;
         const statuses = await resp.json();
 

@@ -55,7 +55,7 @@ def _write_status(filename, stage, error=None):
 
 def _handle_status(event):
     """GET /upload/status — return JSON array of all file statuses."""
-    password = event.get("queryStringParameters", {}).get("password", "")
+    password = event.get("headers", {}).get("x-password", "")
     if not _verify_password(password):
         return _json_response(403, {"error": "Invalid password"})
 
