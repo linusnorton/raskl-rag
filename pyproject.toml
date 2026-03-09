@@ -5,6 +5,7 @@ requires-python = ">=3.11"
 
 [tool.uv.workspace]
 members = ["apps/*"]
+exclude = ["apps/upload"]
 
 [tool.ruff]
 line-length = 120
