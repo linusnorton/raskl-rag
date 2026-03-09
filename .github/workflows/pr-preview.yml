@@ -32,7 +32,7 @@ jobs:
         id: build
         run: |
           TAG="pr-${{ github.event.pull_request.number }}"
-          IMAGE="${{ steps.ecr-login.outputs.registry }}/raskl-chat:${TAG}"
+          IMAGE="${{ steps.ecr-login.outputs.registry }}/raskl-rag-api:${TAG}"
           docker build -f apps/rag_engine/Dockerfile -t "$IMAGE" .
           docker push "$IMAGE"
           echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
@@ -41,14 +41,14 @@ jobs:
       - name: Deploy preview Lambda
         id: deploy
         run: |
-          FUNC_NAME="raskl-chat-pr-${{ github.event.pull_request.number }}"
+          FUNC_NAME="raskl-rag-api-pr-${{ github.event.pull_request.number }}"
           IMAGE="${{ steps.build.outputs.image }}"
 
           # Get prod Lambda config for reference
-          PROD_CONFIG=$(aws lambda get-function-configuration --function-name raskl-chat 2>/dev/null || echo "")
+          PROD_CONFIG=$(aws lambda get-function-configuration --function-name raskl-rag-api 2>/dev/null || echo "")
 
           if [ -z "$PROD_CONFIG" ]; then
-            echo "::error::Production Lambda raskl-chat not found. Deploy to master first."
+            echo "::error::Production Lambda raskl-rag-api not found. Deploy to master first."
             exit 1
           fi
 

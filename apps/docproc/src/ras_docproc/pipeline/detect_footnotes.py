@@ -44,7 +44,7 @@ def detect_footnotes(
 
         for block in blocks:
             if block.block_type == "footnote":
-                # Already classified (e.g., by Docling)
+                # Already classified by extraction stage
                 fn_num = _extract_footnote_number(block.text_clean or block.text_raw)
                 if fn_num is not None:
                     fn_id = make_block_id(doc_id, page_num, "fn", "footnote", text_hash(block.text_raw))

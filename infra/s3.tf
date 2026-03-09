@@ -14,6 +14,17 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "docs" {
   }
 }
 
+resource "aws_s3_bucket_cors_configuration" "docs" {
+  bucket = aws_s3_bucket.docs.id
+
+  cors_rule {
+    allowed_headers = ["*"]
+    allowed_methods = ["PUT"]
+    allowed_origins = ["*"]
+    max_age_seconds = 3600
+  }
+}
+
 resource "aws_s3_bucket_public_access_block" "docs" {
   bucket = aws_s3_bucket.docs.id
 

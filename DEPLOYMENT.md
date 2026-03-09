@@ -9,9 +9,9 @@ Pay-as-you-use serverless stack: Lambda for compute, Neon for pgvector (free tie
                             |
            +----------------+----------------+
            |                |                |
-  [Upload Lambda]   [Chat Lambda]    [PR Preview Lambda]
+  [Upload Lambda]   [RAG API Lambda]    [PR Preview]
    Function URL     Function URL      Function URL
-   (password auth)  (Gradio + LWA)   (same image, PR config)
+   (password auth)  (FastAPI + LWA)  (same image, PR config)
            |           |    |                |
            v           |    v                |
      +---------+       |  +----------+      |
@@ -23,7 +23,7 @@ Pay-as-you-use serverless stack: Lambda for compute, Neon for pgvector (free tie
           |            v
           v       +---------+
    [DocProc Lambda]|  Neon   |
-   (Docling+Chunk  | Postgres|
+   (Qwen3 VL+Chunk| Postgres|
     +Embed+Index)->|pgvector |
                    | (-> 0)  |
                    +---------+
@@ -67,15 +67,16 @@ infra/
 ├── outputs.tf           # Chat URL, Upload URL
 ├── neon.tf              # Neon project, database, role, connection string
 ├── s3.tf                # Document bucket + S3 event notification
-├── ecr.tf               # ECR repos (raskl-chat, raskl-docproc)
-├── lambda-chat.tf       # Chat Lambda + Function URL (RESPONSE_STREAM)
+├── ecr.tf               # ECR repos (raskl-rag-api, raskl-docproc)
+├── lambda-rag-api.tf    # RAG API Lambda (FastAPI + Lambda Web Adapter)
 ├── lambda-docproc.tf    # DocProc Lambda (S3-triggered)
 ├── lambda-upload.tf     # Upload Lambda + Function URL
 ├── lambda-db-init.tf    # One-shot Lambda for DDL (CREATE EXTENSION + tables)
 ├── lambda-db-init/
 │   └── handler.py       # Schema initialization handler
-├── lambda-upload/
-│   └── handler.py       # Upload form + password auth handler
+├── ../apps/upload/
+│   ├── handler.py       # Upload Lambda handler
+│   └── template.html    # Upload page HTML/CSS/JS
 └── iam.tf               # Roles, policies, OIDC provider for GitHub Actions
 ```
 
@@ -86,25 +87,25 @@ infra/
 | `aws_region` | `eu-west-2` | AWS region |
 | `neon_api_key` | — (sensitive) | Neon API key |
 | `upload_password_hash` | — (sensitive) | SHA-256 hash of upload page password |
-| `chat_model_id` | `qwen.qwen3-235b-a22b-2507-v1:0` | Bedrock chat model |
+| `llm_model_id` | `qwen.qwen3-235b-a22b-2507-v1:0` | Bedrock chat LLM model |
 | `embed_model_id` | `amazon.titan-embed-text-v2:0` | Bedrock embedding model |
 | `rerank_model_id` | `amazon.rerank-v1:0` | Bedrock rerank model |
 | `rerank_region` | `eu-central-1` | AWS region for reranking (may differ from main region) |
 | `embed_dimensions` | `1024` | Embedding vector dimensions |
-| `chat_image_tag` | `latest` | Chat Lambda container tag |
+| `rag_api_image_tag` | `latest` | RAG API Lambda container tag |
 | `docproc_image_tag` | `latest` | DocProc Lambda container tag |
 | `github_org` | `linusnorton` | GitHub org for OIDC |
 | `github_repo` | `raskl-rag` | GitHub repo for OIDC |
 
 ## Lambda Functions
 
-### Chat Lambda (`raskl-chat`)
+### RAG API Lambda (`raskl-rag-api`)
 
-- **Container**: `docker/chat/Dockerfile` — Gradio + Lambda Web Adapter, no torch/transformers
+- **Container**: `apps/rag_engine/Dockerfile` — FastAPI + Lambda Web Adapter
 - **Memory**: 2048 MB
 - **Timeout**: 300s
-- **Function URL**: RESPONSE_STREAM mode (for Gradio SSE)
 - **Estimated image**: ~400 MB, cold start ~3s
+- OpenAI-compatible API (`/v1/chat/completions`, `/v1/models`, etc.)
 - All inference via Bedrock (LLM, embedding, reranking)
 
 ### DocProc Lambda (`raskl-docproc`)
@@ -114,7 +115,7 @@ infra/
 - **Timeout**: 900s (15 min)
 - **Trigger**: S3 event on `uploads/*.pdf`
 - **Estimated image**: ~2-3 GB, cold start ~30-60s
-- Pipeline: download PDF → docproc (Qwen3 VL via Bedrock) → upload versioned JSONL to S3 → diff + SES email → Chunker Lambda triggers on JSONL → chunk + embed (Bedrock Titan Embed v2) → index (Neon)
+- Pipeline: download PDF → docproc (Qwen3 VL via Bedrock) → versioned JSONL to S3 → diff + SES email → Chunker Lambda triggers on JSONL → chunk + embed (Bedrock Titan Embed v2) → index (Neon)
 - All PDFs (clean and scanned) use the same Qwen3 VL backend.
 
 ### Upload Lambda (`raskl-upload`)
@@ -147,10 +148,7 @@ The embedding and reranking providers also support Cohere models (Cohere Embed M
 The codebase uses a provider abstraction to switch between local and cloud backends. In Lambda, these environment variables select Bedrock:
 
 ```bash
-# Chat Lambda
-CHAT_LLM_PROVIDER=bedrock
-CHAT_EMBED_PROVIDER=bedrock
-CHAT_RERANK_PROVIDER=bedrock
+# RAG API Lambda (env prefix CHAT_ from RAGConfig)
 CHAT_BEDROCK_REGION=eu-west-2
 CHAT_BEDROCK_CHAT_MODEL_ID=qwen.qwen3-235b-a22b-2507-v1:0
 CHAT_BEDROCK_EMBED_MODEL_ID=amazon.titan-embed-text-v2:0
@@ -189,9 +187,9 @@ python3 -c "import hashlib; print(hashlib.sha256(input('Password: ').encode()).h
 # Login to ECR (after terraform creates repos)
 aws ecr get-login-password --region eu-west-2 | docker login --username AWS --password-stdin ACCOUNT_ID.dkr.ecr.eu-west-2.amazonaws.com
 
-# Build chat image
-docker build -f apps/rag_engine/Dockerfile -t ACCOUNT_ID.dkr.ecr.eu-west-2.amazonaws.com/raskl-chat:latest .
-docker push ACCOUNT_ID.dkr.ecr.eu-west-2.amazonaws.com/raskl-chat:latest
+# Build RAG API image
+docker build -f apps/rag_engine/Dockerfile -t ACCOUNT_ID.dkr.ecr.eu-west-2.amazonaws.com/raskl-rag-api:latest .
+docker push ACCOUNT_ID.dkr.ecr.eu-west-2.amazonaws.com/raskl-rag-api:latest
 
 # Build docproc image
 docker build -f apps/docproc/Dockerfile -t ACCOUNT_ID.dkr.ecr.eu-west-2.amazonaws.com/raskl-docproc:latest .
@@ -213,7 +211,7 @@ terraform apply
 
 ```bash
 # Get URLs
-terraform output chat_url
+terraform output open_webui_url
 terraform output upload_url
 
 # Test upload
@@ -238,14 +236,14 @@ psql "$(terraform output -raw neon_host)" -c "SELECT count(*) FROM chunks;"
 #### `deploy.yml` — On push to master
 
 1. **test** — `uv sync` + pytest (chunker tests)
-2. **build-chat** — Docker build → push to ECR (tagged with commit SHA)
+2. **build-api** — Docker build RAG API → push to ECR (tagged with commit SHA)
 3. **build-docproc** — Docker build → push to ECR
 4. **deploy** — `terraform plan` + `apply` + update Lambda image URIs
 
 #### `pr-preview.yml` — On PR open/sync
 
-1. Build chat image tagged `pr-{N}` → push to ECR
-2. Create/update Lambda `raskl-chat-pr-{N}` (copies prod IAM role + env vars)
+1. Build RAG API image tagged `pr-{N}` → push to ECR
+2. Create/update Lambda `raskl-rag-api-pr-{N}` (copies prod IAM role + env vars)
 3. Create Function URL (RESPONSE_STREAM)
 4. Comment preview URL on the PR
 
@@ -253,7 +251,7 @@ PR previews share the Neon database (same indexed documents).
 
 #### `pr-cleanup.yml` — On PR close
 
-Deletes `raskl-chat-pr-{N}` Lambda + Function URL.
+Deletes `raskl-rag-api-pr-{N}` Lambda + Function URL.
 
 ## Data Migration
 
@@ -281,7 +279,7 @@ The script is idempotent (uses upsert). It requires AWS credentials with Bedrock
 
 ### New documents via S3 upload
 
-Upload PDFs to S3 to trigger the DocProc Lambda (Docling → chunk → Bedrock embed → Neon):
+Upload PDFs to S3 to trigger the DocProc Lambda (Qwen3 VL → chunk → Bedrock embed → Neon):
 
 ```bash
 aws s3 cp "docs/clean/paper.pdf" "s3://$(terraform output -raw s3_bucket)/uploads/paper.pdf"

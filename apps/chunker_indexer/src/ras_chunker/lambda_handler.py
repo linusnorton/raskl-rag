@@ -7,6 +7,7 @@ import logging
 import os
 import re
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import unquote_plus
 
@@ -16,6 +17,22 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 s3 = boto3.client("s3")
+
+
+def _write_status(bucket, filename, stage, error=None):
+    """Write pipeline status for a file to S3."""
+    status = {
+        "filename": filename,
+        "stage": stage,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "error": error,
+    }
+    s3.put_object(
+        Bucket=bucket,
+        Key=f"status/{filename}.json",
+        Body=json.dumps(status),
+        ContentType="application/json",
+    )
 
 
 def lambda_handler(event, context):
@@ -42,18 +59,43 @@ def lambda_handler(event, context):
 
         s3_prefix = f"processed/{doc_id}/v{version}"
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            tmpdir = Path(tmpdir)
+        # Read filename from _meta.json for status tracking
+        filename = _read_meta_filename(bucket, f"{s3_prefix}/_meta.json")
 
-            # Download all JSONL files for this version
-            prefix = f"{s3_prefix}/"
-            _download_version(bucket, prefix, tmpdir, doc_id)
+        if filename:
+            _write_status(bucket, filename, "indexing")
 
-            # Run chunk + embed + index
-            _run_chunk_and_index(doc_id, tmpdir, version, s3_prefix=s3_prefix)
-            logger.info("Indexing complete: doc_id=%s v%d", doc_id, version)
+        try:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                tmpdir = Path(tmpdir)
+
+                # Download all JSONL files for this version
+                prefix = f"{s3_prefix}/"
+                _download_version(bucket, prefix, tmpdir, doc_id)
+
+                # Run chunk + embed + index
+                _run_chunk_and_index(doc_id, tmpdir, version, s3_prefix=s3_prefix)
+                logger.info("Indexing complete: doc_id=%s v%d", doc_id, version)
+
+                if filename:
+                    _write_status(bucket, filename, "done")
+        except Exception:
+            logger.exception("Failed to index %s v%d", doc_id, version)
+            if filename:
+                _write_status(bucket, filename, "error", "Indexing failed")
 
     return {"statusCode": 200, "body": json.dumps("OK")}
+
+
+def _read_meta_filename(bucket: str, key: str) -> str | None:
+    """Read filename from _meta.json in S3."""
+    try:
+        resp = s3.get_object(Bucket=bucket, Key=key)
+        meta = json.loads(resp["Body"].read())
+        return meta.get("filename") or None
+    except Exception:
+        logger.warning("Could not read %s", key)
+        return None
 
 
 def _download_version(bucket: str, prefix: str, tmpdir: Path, doc_id: str) -> None:

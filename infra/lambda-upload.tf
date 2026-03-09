@@ -2,7 +2,7 @@
 
 data "archive_file" "upload" {
   type        = "zip"
-  source_dir  = "${path.module}/lambda-upload"
+  source_dir  = "${path.module}/../apps/upload"
   output_path = "${path.module}/.build/upload.zip"
 }
 

@@ -23,7 +23,7 @@ jobs:
 
       - name: Delete preview Lambda
         run: |
-          FUNC_NAME="raskl-chat-pr-${{ github.event.pull_request.number }}"
+          FUNC_NAME="raskl-rag-api-pr-${{ github.event.pull_request.number }}"
 
           # Check if the function exists
           if aws lambda get-function --function-name "$FUNC_NAME" 2>/dev/null; then

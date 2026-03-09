@@ -94,7 +94,7 @@ def run_agent_streaming(
     messages: list[dict] = [system_msg]
     for entry in history:
         content = entry.get("content") or ""
-        # Handle content as list of text blocks (e.g. from Gradio 6.x or OpenAI format)
+        # Handle content as list of text blocks (OpenAI format)
         if isinstance(content, list):
             content = "".join(block.get("text", "") for block in content if isinstance(block, dict))
         messages.append({"role": entry["role"], "content": content})

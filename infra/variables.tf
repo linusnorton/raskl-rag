@@ -16,7 +16,7 @@ variable "upload_password_hash" {
   sensitive   = true
 }
 
-variable "chat_api_key" {
+variable "rag_api_key" {
   description = "Bearer token for RAG API authentication"
   type        = string
   sensitive   = true
@@ -24,7 +24,7 @@ variable "chat_api_key" {
 
 # --- Bedrock Model IDs (swap models without code changes) ---
 
-variable "chat_model_id" {
+variable "llm_model_id" {
   description = "Bedrock model ID for chat LLM (EU cross-region inference profile)"
   type        = string
   default     = "qwen.qwen3-235b-a22b-2507-v1:0"
@@ -56,8 +56,8 @@ variable "embed_dimensions" {
 
 # --- Container image tags (set by CI/CD) ---
 
-variable "chat_image_tag" {
-  description = "Docker image tag for chat Lambda"
+variable "rag_api_image_tag" {
+  description = "Docker image tag for RAG API Lambda"
   type        = string
   default     = "latest"
 }

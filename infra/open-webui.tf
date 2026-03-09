@@ -64,7 +64,7 @@ resource "aws_apprunner_service" "open_webui" {
 
         runtime_environment_variables = {
           OPENAI_API_BASE_URLS  = "${trimsuffix(aws_apigatewayv2_stage.default.invoke_url, "/")}/v1"
-          OPENAI_API_KEYS       = var.chat_api_key
+          OPENAI_API_KEYS       = var.rag_api_key
           ENABLE_OLLAMA_API     = "false"
           WEBUI_AUTH            = "true"
           AIOHTTP_CLIENT_TIMEOUT          = "300"
@@ -79,12 +79,12 @@ resource "aws_apprunner_service" "open_webui" {
           AUDIO_STT_ENGINE              = "openai"
           AUDIO_STT_MODEL               = "whisper-1"
           AUDIO_STT_OPENAI_API_BASE_URL = "${trimsuffix(aws_apigatewayv2_stage.default.invoke_url, "/")}/v1"
-          AUDIO_STT_OPENAI_API_KEY      = var.chat_api_key
+          AUDIO_STT_OPENAI_API_KEY      = var.rag_api_key
 
           # TTS (Amazon Polly via RAG API)
           AUDIO_TTS_ENGINE              = "openai"
           AUDIO_TTS_OPENAI_API_BASE_URL = "${trimsuffix(aws_apigatewayv2_stage.default.invoke_url, "/")}/v1"
-          AUDIO_TTS_OPENAI_API_KEY      = var.chat_api_key
+          AUDIO_TTS_OPENAI_API_KEY      = var.rag_api_key
         }
       }
 

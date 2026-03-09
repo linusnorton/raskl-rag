@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SwetBot Upload</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 600px; margin: 60px auto; padding: 0 20px; }
+    h1 { font-size: 1.4em; }
+    label { display: block; margin: 16px 0 4px; font-weight: 600; }
+    input { width: 100%; padding: 8px; box-sizing: border-box; }
+    button { margin-top: 20px; padding: 10px 24px; cursor: pointer; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .msg { margin-top: 16px; padding: 12px; border-radius: 4px; }
+    .ok { background: #d4edda; color: #155724; }
+    .err { background: #f8d7da; color: #721c24; }
+    .info { background: #cce5ff; color: #004085; }
+    hr { margin: 24px 0; border: none; border-top: 1px solid #ddd; }
+
+    /* Progress table */
+    #progress { margin-top: 20px; }
+    #progress table { width: 100%; border-collapse: collapse; font-size: 0.85em; }
+    #progress th, #progress td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #eee; }
+    #progress th { font-weight: 600; border-bottom: 2px solid #ddd; }
+    .stage { white-space: nowrap; }
+    .stage-done { color: #155724; }
+    .stage-active { color: #004085; font-weight: 600; }
+    .stage-pending { color: #999; }
+    .stage-error { color: #721c24; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <h1>SwetBot PDF Upload</h1>
+
+  <div>
+    <label>Password</label>
+    <input type="password" id="password" required>
+  </div>
+
+  <div>
+    <label>PDF files</label>
+    <input type="file" id="files" accept=".pdf" multiple>
+    <button id="uploadBtn" onclick="uploadFiles()">Upload</button>
+  </div>
+
+  <hr>
+
+  <h2 style="font-size:1.1em;">Reprocess All Documents</h2>
+  <p style="font-size:0.9em; color:#666;">Re-runs the full pipeline (OCR + chunking + embedding) for every PDF.</p>
+  <button id="reprocessBtn" onclick="reprocessAll()" style="background:#dc3545; color:white; border:none; border-radius:4px; padding:10px 24px; cursor:pointer;">Reprocess All</button>
+
+  <div id="message"></div>
+  <div id="progress"></div>
+
+  <script>
+    const STAGES = ["uploaded", "processing", "processed", "indexing", "done"];
+    const STAGE_LABELS = {uploaded: "Upload", processing: "DocProc", processed: "DocProc", indexing: "Indexing", done: "Done"};
+    const STAGE_INDEX = {uploaded: 0, processing: 1, processed: 2, indexing: 3, done: 4};
+
+    let pollTimer = null;
+    let trackedFiles = new Set();
+
+    function showMsg(text, cls) {
+      document.getElementById("message").innerHTML = `<div class="msg ${cls}">${text}</div>`;
+    }
+
+    function getPassword() {
+      const pw = document.getElementById("password").value;
+      if (!pw) { showMsg("Please enter the password.", "err"); return null; }
+      return pw;
+    }
+
+    async function uploadFiles() {
+      const pw = getPassword();
+      if (!pw) return;
+
+      const fileInput = document.getElementById("files");
+      const files = fileInput.files;
+      if (!files.length) { showMsg("Please select at least one PDF.", "err"); return; }
+
+      const btn = document.getElementById("uploadBtn");
+      btn.disabled = true;
+      document.getElementById("message").innerHTML = "";
+
+      let uploaded = 0;
+      let errors = [];
+
+      for (const file of files) {
+        if (!file.name.toLowerCase().endsWith(".pdf")) {
+          errors.push(`${file.name}: not a PDF`);
+          continue;
+        }
+        try {
+          // Get presigned URL
+          const resp = await fetch("/upload/presign", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({password: pw, filename: file.name})
+          });
+          const data = await resp.json();
+          if (!resp.ok) { errors.push(`${file.name}: ${data.error}`); continue; }
+
+          // PUT to S3
+          const putResp = await fetch(data.upload_url, {
+            method: "PUT",
+            headers: {"Content-Type": "application/pdf"},
+            body: file
+          });
+          if (!putResp.ok) { errors.push(`${file.name}: S3 upload failed`); continue; }
+
+          trackedFiles.add(file.name);
+          uploaded++;
+        } catch (e) {
+          errors.push(`${file.name}: ${e.message}`);
+        }
+      }
+
+      btn.disabled = false;
+
+      if (errors.length) {
+        showMsg(`Uploaded ${uploaded} file(s). Errors: ${errors.join("; ")}`, uploaded > 0 ? "info" : "err");
+      } else {
+        showMsg(`Uploaded ${uploaded} file(s). Processing will begin automatically.`, "ok");
+      }
+
+      if (uploaded > 0) startPolling(pw);
+    }
+
+    async function reprocessAll() {
+      const pw = getPassword();
+      if (!pw) return;
+
+      const btn = document.getElementById("reprocessBtn");
+      btn.disabled = true;
+      document.getElementById("message").innerHTML = "";
+
+      try {
+        const resp = await fetch("/upload/reprocess", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({password: pw})
+        });
+        const data = await resp.json();
+        if (!resp.ok) { showMsg(data.error || "Reprocess failed", "err"); btn.disabled = false; return; }
+
+        const filenames = data.filenames || [];
+        filenames.forEach(f => trackedFiles.add(f));
+        showMsg(`Reprocessing triggered for <strong>${filenames.length}</strong> PDFs.`, "ok");
+        if (filenames.length > 0) startPolling(pw);
+      } catch (e) {
+        showMsg(`Error: ${e.message}`, "err");
+      }
+      btn.disabled = false;
+    }
+
+    function startPolling(pw) {
+      if (pollTimer) return;
+      renderProgress({});
+      pollTimer = setInterval(() => pollStatus(pw), 5000);
+      pollStatus(pw);
+    }
+
+    async function pollStatus(pw) {
+      try {
+        const resp = await fetch(`/upload/status?password=${encodeURIComponent(pw)}`);
+        if (!resp.ok) return;
+        const statuses = await resp.json();
+
+        // Build map keyed by filename
+        const statusMap = {};
+        for (const s of statuses) {
+          statusMap[s.filename] = s;
+        }
+        renderProgress(statusMap);
+
+        // Stop polling if all tracked files are terminal
+        const terminal = new Set(["done", "error"]);
+        const allDone = [...trackedFiles].every(f => {
+          const s = statusMap[f];
+          return s && terminal.has(s.stage);
+        });
+        if (allDone && trackedFiles.size > 0) {
+          clearInterval(pollTimer);
+          pollTimer = null;
+        }
+      } catch (e) {
+        // Ignore polling errors
+      }
+    }
+
+    function renderProgress(statusMap) {
+      if (trackedFiles.size === 0) return;
+
+      let html = "<table><tr><th>File</th><th>Upload</th><th>DocProc</th><th>Indexing</th><th>Done</th></tr>";
+      const displayStages = ["uploaded", "processing", "indexing", "done"];
+
+      for (const filename of trackedFiles) {
+        const status = statusMap[filename];
+        const stage = status ? status.stage : "uploaded";
+        const isError = stage === "error";
+        const stageIdx = isError ? -1 : (STAGE_INDEX[stage] || 0);
+
+        html += `<tr><td title="${filename}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${filename}</td>`;
+
+        if (isError) {
+          // Show checkmarks up to where it failed, then error
+          const errorMsg = status.error || "Error";
+          // Figure out which stage errored — show check for upload at minimum
+          html += `<td class="stage stage-done">&#10003;</td>`;
+          html += `<td class="stage stage-error" colspan="3">&#10007; ${errorMsg}</td>`;
+        } else {
+          // Upload column: done if stage >= uploaded
+          html += stageIdx >= 0
+            ? `<td class="stage stage-done">&#10003;</td>`
+            : `<td class="stage stage-pending">&#9675;</td>`;
+
+          // DocProc column: active if processing, done if processed or beyond
+          if (stageIdx >= 3) {
+            html += `<td class="stage stage-done">&#10003;</td>`;
+          } else if (stageIdx >= 1) {
+            html += `<td class="stage stage-active">&#8987;</td>`;
+          } else {
+            html += `<td class="stage stage-pending">&#9675;</td>`;
+          }
+
+          // Indexing column
+          if (stageIdx >= 4) {
+            html += `<td class="stage stage-done">&#10003;</td>`;
+          } else if (stageIdx >= 3) {
+            html += `<td class="stage stage-active">&#8987;</td>`;
+          } else {
+            html += `<td class="stage stage-pending">&#9675;</td>`;
+          }
+
+          // Done column
+          if (stageIdx >= 4) {
+            html += `<td class="stage stage-done">&#10003;</td>`;
+          } else {
+            html += `<td class="stage stage-pending">&#9675;</td>`;
+          }
+        }
+
+        html += "</tr>";
+      }
+
+      html += "</table>";
+      document.getElementById("progress").innerHTML = html;
+    }
+  </script>
+</body>
+</html>

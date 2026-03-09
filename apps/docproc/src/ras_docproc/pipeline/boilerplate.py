@@ -40,7 +40,7 @@ def detect_boilerplate(
         page_h = page_heights.get(page_num, 800.0)
         for block in blocks:
             if block.block_type in ("header", "footer"):
-                continue  # Already classified by Docling
+                continue  # Already classified by extraction stage
             if is_in_zone(block.bbox, page_h, 0.0, config.header_zone_bottom):
                 block.block_type = "header"
             elif is_in_zone(block.bbox, page_h, config.footer_zone_top, 1.0):

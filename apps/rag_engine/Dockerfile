@@ -28,10 +28,5 @@ ENV AWS_LWA_PORT=8000
 ENV AWS_LWA_READINESS_CHECK_PATH=/
 ENV UV_CACHE_DIR=/tmp/uv-cache
 
-# Bedrock provider defaults
-ENV CHAT_LLM_PROVIDER=bedrock
-ENV CHAT_EMBED_PROVIDER=bedrock
-ENV CHAT_RERANK_PROVIDER=bedrock
-
 # Start FastAPI RAG API — Lambda Web Adapter proxies Lambda events to port 8000
 CMD ["/app/.venv/bin/python", "-m", "ras_rag_engine.api"]

@@ -14,8 +14,7 @@ resource "aws_lambda_function" "docproc" {
       # S3
       DOCS_BUCKET = aws_s3_bucket.docs.id
 
-      # Qwen3 VL backend
-      DOCPROC_EXTRACTION_BACKEND  = "qwen3vl"
+      # Qwen3 VL (Bedrock)
       DOCPROC_BEDROCK_REGION      = var.aws_region
       DOCPROC_BEDROCK_OCR_MODEL_ID = "qwen.qwen3-vl-235b-a22b"
 

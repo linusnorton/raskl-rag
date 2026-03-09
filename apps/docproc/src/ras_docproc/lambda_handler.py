@@ -7,6 +7,7 @@ import logging
 import os
 import re
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import unquote_plus
 
@@ -16,6 +17,22 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 s3 = boto3.client("s3")
+
+
+def _write_status(bucket, filename, stage, error=None):
+    """Write pipeline status for a file to S3."""
+    status = {
+        "filename": filename,
+        "stage": stage,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "error": error,
+    }
+    s3.put_object(
+        Bucket=bucket,
+        Key=f"status/{filename}.json",
+        Body=json.dumps(status),
+        ContentType="application/json",
+    )
 
 
 def lambda_handler(event, context):
@@ -28,33 +45,41 @@ def lambda_handler(event, context):
             logger.info("Skipping non-PDF: %s", key)
             continue
 
+        filename = os.path.basename(key)
         logger.info("Processing s3://%s/%s", bucket, key)
+        _write_status(bucket, filename, "processing")
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            tmpdir = Path(tmpdir)
+        try:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                tmpdir = Path(tmpdir)
 
-            # Download PDF
-            pdf_path = tmpdir / os.path.basename(key)
-            s3.download_file(bucket, key, str(pdf_path))
-            logger.info("Downloaded PDF: %s (%d bytes)", pdf_path.name, pdf_path.stat().st_size)
+                # Download PDF
+                pdf_path = tmpdir / filename
+                s3.download_file(bucket, key, str(pdf_path))
+                logger.info("Downloaded PDF: %s (%d bytes)", pdf_path.name, pdf_path.stat().st_size)
 
-            # Run docproc pipeline (Qwen3 VL via Bedrock)
-            out_dir = tmpdir / "data"
-            doc_id = _run_docproc(pdf_path, out_dir)
-            logger.info("Docproc complete: doc_id=%s", doc_id)
+                # Run docproc pipeline (Qwen3 VL via Bedrock)
+                out_dir = tmpdir / "data"
+                doc_id = _run_docproc(pdf_path, out_dir)
+                logger.info("Docproc complete: doc_id=%s", doc_id)
 
-            # Guard: don't upload empty output (e.g. all pages failed OCR due to throttling)
-            text_blocks_file = out_dir / "out" / doc_id / "text_blocks.jsonl"
-            if not text_blocks_file.exists() or text_blocks_file.stat().st_size == 0:
-                logger.error(
-                    "Aborting upload for %s: text_blocks.jsonl is empty — OCR likely failed on all pages",
-                    doc_id,
-                )
-                continue
+                # Guard: don't upload empty output (e.g. all pages failed OCR due to throttling)
+                text_blocks_file = out_dir / "out" / doc_id / "text_blocks.jsonl"
+                if not text_blocks_file.exists() or text_blocks_file.stat().st_size == 0:
+                    logger.error(
+                        "Aborting upload for %s: text_blocks.jsonl is empty — OCR likely failed on all pages",
+                        doc_id,
+                    )
+                    _write_status(bucket, filename, "error", "OCR failed — empty output")
+                    continue
 
-            # Upload versioned JSONL to S3 and run diff + email
-            version = _upload_versioned_output(bucket, doc_id, out_dir, tmpdir)
-            logger.info("Output uploaded to s3://%s/processed/%s/v%d/", bucket, doc_id, version)
+                # Upload versioned JSONL to S3 and run diff + email
+                version = _upload_versioned_output(bucket, doc_id, out_dir, tmpdir, filename=filename)
+                logger.info("Output uploaded to s3://%s/processed/%s/v%d/", bucket, doc_id, version)
+                _write_status(bucket, filename, "processed")
+        except Exception:
+            logger.exception("Failed to process %s", filename)
+            _write_status(bucket, filename, "error", "DocProc failed")
 
     return {"statusCode": 200, "body": json.dumps("OK")}
 
@@ -111,7 +136,7 @@ def _download_previous_version(bucket: str, doc_id: str, version: int, local_dir
     return prev_dir
 
 
-def _upload_versioned_output(bucket: str, doc_id: str, data_dir: Path, tmpdir: Path) -> int:
+def _upload_versioned_output(bucket: str, doc_id: str, data_dir: Path, tmpdir: Path, *, filename: str = "") -> int:
     """Upload processed JSONL files to S3 under processed/{doc_id}/v{N}/, run diff + email."""
     doc_dir = data_dir / "out" / doc_id
 
@@ -144,6 +169,7 @@ def _upload_versioned_output(bucket: str, doc_id: str, data_dir: Path, tmpdir: P
         "version": version,
         "backend": "qwen3vl",
         "doc_id": doc_id,
+        "filename": filename,
     }
     s3.put_object(
         Bucket=bucket,

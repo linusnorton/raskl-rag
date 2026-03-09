@@ -1,7 +1,7 @@
 # --- ECR repositories for Lambda container images ---
 
-resource "aws_ecr_repository" "chat" {
-  name                 = "${local.prefix}-chat"
+resource "aws_ecr_repository" "rag_api" {
+  name                 = "${local.prefix}-rag-api"
   image_tag_mutability = "MUTABLE"
   force_delete         = true
 
@@ -21,8 +21,9 @@ resource "aws_ecr_repository" "docproc" {
 }
 
 # Lifecycle policy: keep only last 5 untagged images
-resource "aws_ecr_lifecycle_policy" "chat" {
-  repository = aws_ecr_repository.chat.name
+
+resource "aws_ecr_lifecycle_policy" "rag_api" {
+  repository = aws_ecr_repository.rag_api.name
 
   policy = jsonencode({
     rules = [{

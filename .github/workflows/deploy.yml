@@ -19,6 +19,7 @@ jobs:
       api: ${{ steps.filter.outputs.api }}
       docproc: ${{ steps.filter.outputs.docproc }}
       chunker: ${{ steps.filter.outputs.chunker }}
+      upload: ${{ steps.filter.outputs.upload }}
       infra: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.infra }}
       open_webui: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.open_webui }}
     steps:
@@ -45,6 +46,8 @@ jobs:
               - 'apps/chunker_indexer/Dockerfile'
               - 'pyproject.toml'
               - 'uv.lock'
+            upload:
+              - 'apps/upload/**'
             infra:
               - 'infra/**'
             open_webui:
@@ -90,9 +93,13 @@ jobs:
         id: meta
         run: echo "sha=${GITHUB_SHA::8}" >> "$GITHUB_OUTPUT"
 
-      - name: Build and push API image
+      - name: Build and push RAG API image
         run: |
-          IMAGE="${{ steps.ecr-login.outputs.registry }}/raskl-chat:${{ steps.meta.outputs.sha }}"
+          # Ensure ECR repo exists (handles rename from raskl-chat → raskl-rag-api)
+          aws ecr describe-repositories --repository-names raskl-rag-api 2>/dev/null || \
+            aws ecr create-repository --repository-name raskl-rag-api --image-tag-mutability MUTABLE
+
+          IMAGE="${{ steps.ecr-login.outputs.registry }}/raskl-rag-api:${{ steps.meta.outputs.sha }}"
           docker build -f apps/rag_engine/Dockerfile -t "$IMAGE" .
           docker push "$IMAGE"
 
@@ -202,7 +209,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: production
-      url: ${{ steps.urls.outputs.chat_url }}
+      url: ${{ steps.urls.outputs.open_webui_url }}
     steps:
       - uses: actions/checkout@v4
 
@@ -225,12 +232,18 @@ jobs:
         if: needs.changes.outputs.infra == 'true'
         working-directory: infra
         run: |
-          # Import ECR repo if it exists but isn't in state yet (first deploy only)
+          # Import ECR repos if they exist but aren't in state yet (handles renames + first deploy)
           terraform import \
             -var="neon_api_key=${{ secrets.NEON_API_KEY }}" \
             -var="upload_password_hash=${{ secrets.UPLOAD_PASSWORD_HASH }}" \
-            -var="chat_api_key=${{ secrets.CHAT_API_KEY }}" \
+            -var="rag_api_key=${{ secrets.CHAT_API_KEY }}" \
             aws_ecr_repository.chunker raskl-chunker 2>/dev/null || true
+
+          terraform import \
+            -var="neon_api_key=${{ secrets.NEON_API_KEY }}" \
+            -var="upload_password_hash=${{ secrets.UPLOAD_PASSWORD_HASH }}" \
+            -var="rag_api_key=${{ secrets.CHAT_API_KEY }}" \
+            aws_ecr_repository.rag_api raskl-rag-api 2>/dev/null || true
 
       - name: Build db-init Lambda package
         if: needs.changes.outputs.infra == 'true'
@@ -246,12 +259,12 @@ jobs:
         working-directory: infra
         run: |
           terraform plan \
-            -var="chat_image_tag=${{ needs.build-api.outputs.image_tag || 'latest' }}" \
+            -var="rag_api_image_tag=${{ needs.build-api.outputs.image_tag || 'latest' }}" \
             -var="docproc_image_tag=${{ needs.build-docproc.outputs.image_tag || 'latest' }}" \
             -var="chunker_image_tag=${{ needs.build-chunker.outputs.image_tag || 'latest' }}" \
             -var="neon_api_key=${{ secrets.NEON_API_KEY }}" \
             -var="upload_password_hash=${{ secrets.UPLOAD_PASSWORD_HASH }}" \
-            -var="chat_api_key=${{ secrets.CHAT_API_KEY }}" \
+            -var="rag_api_key=${{ secrets.CHAT_API_KEY }}" \
             -out=tfplan
 
       - name: Terraform Apply
@@ -261,12 +274,12 @@ jobs:
 
       - name: Update Lambda images
         run: |
-          # Update chat Lambda if API was rebuilt
+          # Update RAG API Lambda if API was rebuilt
           if [ -n "${{ needs.build-api.outputs.image_tag }}" ]; then
-            CHAT_REPO=$(aws ecr describe-repositories --repository-names raskl-chat --query 'repositories[0].repositoryUri' --output text)
+            RAG_API_REPO=$(aws ecr describe-repositories --repository-names raskl-rag-api --query 'repositories[0].repositoryUri' --output text)
             aws lambda update-function-code \
-              --function-name raskl-chat \
-              --image-uri "${CHAT_REPO}:${{ needs.build-api.outputs.image_tag }}"
+              --function-name raskl-rag-api \
+              --image-uri "${RAG_API_REPO}:${{ needs.build-api.outputs.image_tag }}"
           fi
 
           # Update docproc Lambda if docproc was rebuilt
@@ -285,9 +298,16 @@ jobs:
               --image-uri "${CHUNKER_REPO}:${{ needs.build-chunker.outputs.image_tag }}"
           fi
 
-      - name: Get deployment URL
+      - name: Update upload Lambda
+        if: needs.changes.outputs.upload == 'true'
+        run: |
+          cd apps/upload && zip -r /tmp/upload.zip handler.py template.html
+          aws lambda update-function-code \
+            --function-name raskl-upload \
+            --zip-file fileb:///tmp/upload.zip
+
+      - name: Get deployment URLs
         id: urls
         run: |
-          # Get Open WebUI URL from App Runner
-          CHAT_URL=$(aws apprunner list-services --query "ServiceSummaryList[?ServiceName=='raskl-open-webui'].ServiceUrl" --output text)
-          echo "chat_url=https://${CHAT_URL}" >> "$GITHUB_OUTPUT"
+          OPEN_WEBUI_URL=$(aws apprunner list-services --query "ServiceSummaryList[?ServiceName=='raskl-open-webui'].ServiceUrl" --output text)
+          echo "open_webui_url=https://${OPEN_WEBUI_URL}" >> "$GITHUB_OUTPUT"

@@ -1,23 +1,23 @@
 # --- RAG API Lambda (FastAPI + Lambda Web Adapter) ---
 
-resource "aws_lambda_function" "chat" {
-  function_name = "${local.prefix}-chat"
+moved {
+  from = aws_lambda_function.chat
+  to   = aws_lambda_function.rag_api
+}
+
+resource "aws_lambda_function" "rag_api" {
+  function_name = "${local.prefix}-rag-api"
   role          = aws_iam_role.lambda_exec.arn
   package_type  = "Image"
-  image_uri     = "${aws_ecr_repository.chat.repository_url}:${var.chat_image_tag}"
+  image_uri     = "${aws_ecr_repository.rag_api.repository_url}:${var.rag_api_image_tag}"
   timeout       = 300
   memory_size   = 2048
 
   environment {
     variables = {
-      # Provider selection
-      CHAT_LLM_PROVIDER    = "bedrock"
-      CHAT_EMBED_PROVIDER  = "bedrock"
-      CHAT_RERANK_PROVIDER = "bedrock"
-
       # Bedrock model configuration
       CHAT_BEDROCK_REGION          = var.aws_region
-      CHAT_BEDROCK_CHAT_MODEL_ID   = var.chat_model_id
+      CHAT_BEDROCK_CHAT_MODEL_ID   = var.llm_model_id
       CHAT_BEDROCK_EMBED_MODEL_ID  = var.embed_model_id
       CHAT_BEDROCK_RERANK_REGION   = var.rerank_region
       CHAT_BEDROCK_RERANK_MODEL_ID = var.rerank_model_id
@@ -35,7 +35,7 @@ resource "aws_lambda_function" "chat" {
 
       # API server
       CHAT_API_PORT = "8000"
-      CHAT_API_KEY  = var.chat_api_key
+      CHAT_API_KEY  = var.rag_api_key
 
       # Web search enabled (no VPC = direct internet)
       CHAT_WEB_SEARCH_ENABLED = "true"
