@@ -30,8 +30,23 @@ start_postgres() {
     echo "[WARN] PostgreSQL not ready after 30s, continuing anyway."
 }
 
-# --- AWS credentials ---
+# --- Environment / AWS credentials ---
+
+load_dotenv() {
+    local env_file="$ROOT_DIR/.env"
+    if [[ -f "$env_file" ]]; then
+        set -a
+        source "$env_file"
+        set +a
+    fi
+}
 
 export_aws_env() {
-    export AWS_PROFILE="${AWS_PROFILE:-linusnorton}"
+    load_dotenv
+    # Prefer explicit keys over AWS_PROFILE
+    if [[ -n "${AWS_ACCESS_KEY_ID:-}" ]]; then
+        unset AWS_PROFILE
+    elif [[ -z "${AWS_PROFILE:-}" ]]; then
+        export AWS_PROFILE="linusnorton"
+    fi
 }

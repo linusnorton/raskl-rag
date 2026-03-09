@@ -1,6 +1,11 @@
 """Shared pytest configuration for E2E tests."""
 
+from pathlib import Path
+
 import pytest
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 
 def pytest_addoption(parser):

@@ -16,6 +16,9 @@ console = Console()
 @click.group()
 def cli() -> None:
     """ras-chunker: chunk and index text blocks for RAG."""
+    from dotenv import load_dotenv
+
+    load_dotenv()
 
 
 @cli.command()

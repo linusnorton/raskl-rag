@@ -8,7 +8,7 @@
 #   ./scripts/docproc.sh --docs-dir=path/to   # custom input directory
 source "$(dirname "$0")/lib.sh"
 
-export AWS_PROFILE="${AWS_PROFILE:-linusnorton}"
+export_aws_env
 
 WORKERS=8
 FORCE=true

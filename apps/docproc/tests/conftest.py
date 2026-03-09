@@ -5,8 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from dotenv import load_dotenv
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
+load_dotenv(REPO_ROOT / ".env")
 DOCS_DIR = REPO_ROOT / "docs"
 SWETTENHAM_PDF = DOCS_DIR / "messy" / "Swettenham Journal 1874-1876.pdf"
 ABDULLAH_PDF = DOCS_DIR / "clean" / "Abdullah (2011) JMBRAS 84(1), 1-22.pdf"

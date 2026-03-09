@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import fitz
@@ -14,24 +15,8 @@ from ras_docproc.utils.hashing import make_block_id, text_hash
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """\
-You are a document OCR engine. Convert the page image to clean Markdown text.
-
-Rules:
-- Preserve the reading order exactly as it appears on the page.
-- Use **bold** and *italic* for emphasis where the original uses bold/italic.
-- Use # for main headings, ## for subheadings.
-- Use > for block quotes.
-- Separate each distinct paragraph or entry with a blank line.
-- In journals or diaries, treat each date entry (e.g. "6th October.", "Monday, 12th March.") \
-as the start of a new paragraph — always insert a blank line before it.
-- Preserve natural paragraph breaks from the source document; do not merge adjacent paragraphs \
-into a single block of text.
-- If the page has footnotes (small text at the bottom, often after a horizontal rule), \
-separate them with --- and format each as a numbered line: 1. footnote text
-- Convert superscript footnote references in body text to ^N notation (e.g. ^1, ^23).
-- Do NOT describe images or figures — skip them entirely.
-- Do NOT add any commentary, explanation, or preamble. Output ONLY the Markdown text."""
+MAX_RETRIES = 3
+RETRY_BASE_DELAY = 5  # seconds
 
 
 def _render_page_to_png_bytes(pdf_path: str, page_index: int, dpi: int) -> tuple[bytes, float, float]:
@@ -54,37 +39,63 @@ def _call_bedrock(
     model_id: str,
     image_bytes: bytes,
     max_tokens: int,
+    system_prompt: str,
 ) -> str:
-    """Call Bedrock Converse API with image + formatting prompt."""
+    """Call Bedrock Converse API with image + formatting prompt. Retries on transient errors."""
     import boto3
+    from botocore.config import Config as BotoConfig
+    from botocore.exceptions import ClientError, ReadTimeoutError
 
-    client = boto3.client("bedrock-runtime", region_name=region)
+    bedrock_config = BotoConfig(read_timeout=120, retries={"max_attempts": 0})
+    client = boto3.client("bedrock-runtime", region_name=region, config=bedrock_config)
 
-    response = client.converse(
-        modelId=model_id,
-        messages=[
-            {
-                "role": "user",
-                "content": [
+    for attempt in range(MAX_RETRIES):
+        try:
+            response = client.converse(
+                modelId=model_id,
+                messages=[
                     {
-                        "image": {
-                            "format": "png",
-                            "source": {"bytes": image_bytes},
-                        },
+                        "role": "user",
+                        "content": [
+                            {
+                                "image": {
+                                    "format": "png",
+                                    "source": {"bytes": image_bytes},
+                                },
+                            },
+                            {"text": "Convert this page to Markdown following the system instructions."},
+                        ],
                     },
-                    {"text": "Convert this page to Markdown following the system instructions."},
                 ],
-            },
-        ],
-        system=[{"text": SYSTEM_PROMPT}],
-        inferenceConfig={"maxTokens": max_tokens, "temperature": 0.0},
-    )
+                system=[{"text": system_prompt}],
+                inferenceConfig={"maxTokens": max_tokens, "temperature": 0.0},
+            )
 
-    text = response["output"]["message"]["content"][0]["text"]
-    # Strip markdown code fences that Qwen3 VL sometimes wraps around its response
-    text = re.sub(r"^```(?:markdown)?\s*\n?", "", text)
-    text = re.sub(r"\n?```\s*$", "", text)
-    return text
+            text = response["output"]["message"]["content"][0]["text"]
+            # Strip markdown code fences that Qwen3 VL sometimes wraps around its response
+            text = re.sub(r"^```(?:markdown)?\s*\n?", "", text)
+            text = re.sub(r"\n?```\s*$", "", text)
+            return text
+        except (ReadTimeoutError, ClientError) as e:
+            # Don't retry non-transient errors (auth, access denied, bad request)
+            retryable = isinstance(e, ReadTimeoutError) or e.response["Error"]["Code"] in (
+                "ThrottlingException",
+                "ServiceUnavailableException",
+                "ValidationException",
+                "InternalServerException",
+            )
+            if not retryable or attempt == MAX_RETRIES - 1:
+                raise
+            delay = RETRY_BASE_DELAY * (2**attempt)
+            logger.warning(
+                "Qwen3 VL: Bedrock call failed (attempt %d/%d), retrying in %ds: %s",
+                attempt + 1,
+                MAX_RETRIES,
+                delay,
+                e,
+            )
+            time.sleep(delay)
+    raise RuntimeError("unreachable")
 
 
 def _parse_markdown_to_blocks(
@@ -208,6 +219,7 @@ def _process_page(
         config.bedrock_ocr_model_id,
         png_bytes,
         config.qwen3vl_max_tokens,
+        config.qwen3vl_system_prompt,
     )
     logger.debug("Qwen3 VL: page %d response length %d chars", page_num, len(markdown))
 

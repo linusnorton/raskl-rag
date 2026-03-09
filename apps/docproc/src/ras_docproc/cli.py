@@ -29,6 +29,9 @@ def _setup_logging(verbose: bool = False) -> None:
 @click.option("-v", "--verbose", is_flag=True, help="Enable debug logging")
 def cli(verbose: bool) -> None:
     """ras-docproc: process PDFs into structured JSONL for RAG."""
+    from dotenv import load_dotenv
+
+    load_dotenv()
     _setup_logging(verbose)
 
 

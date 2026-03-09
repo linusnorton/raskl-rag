@@ -23,6 +23,12 @@ from .retriever import RetrievedChunk
 
 log = logging.getLogger(__name__)
 
+# Load .env for local development (Lambda gets credentials from IAM role)
+if not os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+    from dotenv import load_dotenv
+
+    load_dotenv()
+
 app = FastAPI(title="SwetBot RAG API")
 _config: RAGConfig | None = None
 _security = HTTPBearer(auto_error=False)

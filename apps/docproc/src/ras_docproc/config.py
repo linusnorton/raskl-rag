@@ -38,7 +38,28 @@ class PipelineConfig(BaseSettings):
     bedrock_ocr_model_id: str = Field(default="qwen.qwen3-vl-235b-a22b", description="Bedrock model ID for OCR")
     qwen3vl_dpi: int = Field(default=300, description="DPI for page rendering when using Qwen3 VL backend")
     qwen3vl_max_tokens: int = Field(default=4096, description="Max tokens per page for Qwen3 VL OCR")
-    qwen3vl_max_workers: int = Field(default=10, description="Max parallel Bedrock calls for Qwen3 VL")
+    qwen3vl_max_workers: int = Field(default=6, description="Max parallel Bedrock calls for Qwen3 VL")
+    qwen3vl_system_prompt: str = Field(
+        default="""\
+You are a document OCR engine. Convert the page image to clean Markdown text.
+
+Rules:
+- Preserve the reading order exactly as it appears on the page.
+- Use **bold** and *italic* for emphasis where the original uses bold/italic.
+- Use # for main headings, ## for subheadings.
+- Use > for block quotes.
+- Separate each distinct paragraph or entry with a blank line.
+- In journals or diaries, treat each date entry (e.g. "6th October.", "Monday, 12th March.") \
+as the start of a new paragraph — always insert a blank line before it.
+- Preserve natural paragraph breaks from the source document; do not merge adjacent paragraphs \
+into a single block of text.
+- If the page has footnotes (small text at the bottom, often after a horizontal rule), \
+separate them with --- and format each as a numbered line: 1. footnote text
+- Convert superscript footnote references in body text to ^N notation (e.g. ^1, ^23).
+- Do NOT describe images or figures — skip them entirely.
+- Do NOT add any commentary, explanation, or preamble. Output ONLY the Markdown text.""",
+        description="System prompt for Qwen3 VL OCR",
+    )
 
     # Versioning
     extraction_version: str = "0.1.0"

@@ -12,6 +12,7 @@ dependencies = [
     "rich",
     "tqdm",
     "jinja2",
+    "python-dotenv",
 ]
 
 [project.scripts]

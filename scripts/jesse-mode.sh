@@ -5,32 +5,16 @@
 # Usage: ./scripts/jesse-mode.sh
 source "$(dirname "$0")/lib.sh"
 
-# --- Load .env ---
-ENV_FILE="$ROOT_DIR/.env"
-if [[ -f "$ENV_FILE" ]]; then
-    step "Loading .env"
-    set -a
-    source "$ENV_FILE"
-    set +a
-else
-    fail "No .env file found at $ENV_FILE — copy .env.example and fill in values"
-fi
+# --- Load .env + AWS credentials ---
+export_aws_env
 
-# --- Validate required vars ---
 if [[ -z "${CHAT_DATABASE_DSN:-}" ]]; then
     fail "CHAT_DATABASE_DSN is not set — add it to .env"
 fi
 
-if [[ -z "${AWS_PROFILE:-}" && -z "${AWS_ACCESS_KEY_ID:-}" ]]; then
-    fail "AWS credentials not set — set AWS_PROFILE or AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY in .env"
+if [[ -z "${AWS_ACCESS_KEY_ID:-}" && -z "${AWS_PROFILE:-}" ]]; then
+    fail "AWS credentials not set — set AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY or AWS_PROFILE in .env"
 fi
-
-# --- AWS credentials ---
-# If using explicit keys, don't override with AWS_PROFILE
-if [[ -n "${AWS_ACCESS_KEY_ID:-}" ]]; then
-    export AWS_PROFILE=""
-fi
-export_aws_env
 
 # --- Install dependencies ---
 step "Installing dependencies"

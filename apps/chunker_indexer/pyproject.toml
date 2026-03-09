@@ -10,6 +10,7 @@ dependencies = [
     "click",
     "rich",
     "tqdm",
+    "python-dotenv",
 ]
 
 [project.optional-dependencies]
