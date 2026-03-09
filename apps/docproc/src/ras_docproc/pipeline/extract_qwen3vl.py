@@ -20,7 +20,7 @@ RETRY_BASE_DELAY = 5  # seconds
 
 
 MAX_IMAGE_BYTES = 3_700_000  # 3.7 MB — just under Bedrock's 3.75 MB per-image limit
-DPI_FALLBACKS = (200, 150, 120)  # DPI steps to try if the image is too large
+DPI_FALLBACKS = (200, 150, 100)  # DPI steps to try if the image is too large
 
 
 def _render_page_to_png_bytes(pdf_path: str, page_index: int, dpi: int) -> tuple[bytes, float, float]:
