@@ -33,6 +33,7 @@ class _FootnoteRecord(BaseModel):
     footnote_number: int
     text_raw: str
     text_clean: str = ""
+    footnote_type: str = "explanatory"
 
 
 class _FootnoteRefRecord(BaseModel):

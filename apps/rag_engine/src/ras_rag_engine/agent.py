@@ -35,6 +35,10 @@ Guidelines:
 - If the context passages are insufficient, use the search_documents tool with alternative
   queries (synonyms, related terms, broader scope). For general knowledge outside the
   collection, use the web_search tool.
+- When a passage's footnotes cite an external primary source (marked with [cites:] in the
+  footnote section), distinguish between what the secondary author claims and what the
+  primary source records. Mention the original source naturally, e.g. "according to a colonial
+  office dispatch (cited in Author [N])".
 - Do not invent facts. Only state what the sources say.
 - When the context contains "Available image" lines with markdown like ![caption](url), ALWAYS include them in your response exactly as written. These are real, viewable images from the collection.\
 """

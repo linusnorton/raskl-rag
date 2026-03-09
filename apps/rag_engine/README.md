@@ -158,6 +158,11 @@ many tool rounds would silently truncate the response or cause API errors.
 - Use `web_search` for general knowledge outside the collection
 - Never invent facts
 
+**Transitive citation guidance:** A guideline instructs the LLM to handle `[cites:]`-marked
+footnotes by distinguishing between secondary author claims and primary source records. For
+example, when a footnote cites `CO 273/105`, the LLM should say "according to a colonial office
+dispatch (cited in Author [N])" rather than attributing the claim directly to the author.
+
 **What we avoided:** Explicit refusal templates ("I cannot answer..."). Qwen3 over-triggers
 refusal when the prompt includes them, refusing benign historical queries. Instead, the prompt
 says "do not invent facts" and "only state what the sources say", which achieves the same goal

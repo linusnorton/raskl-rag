@@ -113,6 +113,7 @@ class FootnoteRecord(BaseModel):
     bbox: BBox
     text_raw: str
     text_clean: str = ""
+    footnote_type: Literal["citation", "explanatory", "mixed"] = "explanatory"
     lang: str | None = None
     lang_confidence: float | None = None
 

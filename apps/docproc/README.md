@@ -141,7 +141,26 @@ type; 1950s journals used parenthetical references; digitised PDFs sometimes hav
 that allows superscript detection but sometimes do not. The dual approach maximises coverage
 without requiring manual configuration per document.
 
-### D5 — Deterministic, content-based IDs
+### D5 — Footnote classification
+
+**What we chose:** Each detected footnote is classified as `citation`, `explanatory`, or `mixed`
+using regex-based heuristics in `classify_footnote_type()`. The classification is stored in the
+`footnote_type` field of `FootnoteRecord` and exported to `footnotes.jsonl`.
+
+**Pattern categories:** Scholarly author-year references (`Gullick (1992: 246-8)`), archival
+sources (`CO 273/105`, `IOR`, `BL/APAC/`), ibid/cross-references, see/cf. references,
+newspaper citations, official documents, URLs, and personal communications.
+
+**Citation vs mixed:** After removing all citation pattern matches from the text, if ≤8 words
+remain, it's a pure `citation`; otherwise `mixed`. Footnotes with no citation patterns are
+`explanatory`.
+
+**Why:** Downstream, the chunker annotates citation footnotes with `[cites:]` markers so the
+RAG system can distinguish between what a secondary author claims and what a primary source
+records. This solves the "citation of citation" problem where the system attributes a claim to
+the paper author when the footnote actually cites an external primary source.
+
+### D6 — Deterministic, content-based IDs
 
 **What we chose:**
 
@@ -159,7 +178,7 @@ haven't changed. If the PDF content changes, the hash changes and new IDs are pr
 This also means IDs are meaningful at a glance (the slug prefix) while being collision-resistant
 (the hash suffix).
 
-### D6 — AWS Lambda deployment
+### D7 — AWS Lambda deployment
 
 **What we chose:** An S3-triggered Lambda handler (`lambda_handler.py`) that:
 

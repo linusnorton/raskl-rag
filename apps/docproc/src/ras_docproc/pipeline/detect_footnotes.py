@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+from typing import Literal
 
 from ras_docproc.config import PipelineConfig
 from ras_docproc.schema import BBox, FootnoteRecord, TextBlockRecord
@@ -19,6 +20,72 @@ FOOTNOTE_PATTERNS = [
     re.compile(r"^(\d{1,3})\.\s"),  # "1. Some footnote text"
     re.compile(r"^(\d{1,3})\)[\s]"),  # "1) Some footnote text"
 ]
+
+# ---------------------------------------------------------------------------
+# Footnote type classification
+# ---------------------------------------------------------------------------
+
+_CITATION_PATTERNS = [
+    # Scholarly author-year: "Gullick (1992: 246-8)", "Wong (2015)", "Zedler (1731-54)"
+    re.compile(r"\b[A-Z][a-z]+\s*\(\d{4}(?:[a-z])?(?::\s*[\d\-,\s]+)?\)"),
+    # Archival / manuscript sources
+    re.compile(r"\bCO\s*\d+/\d+"),
+    re.compile(r"\bFO\s*\d+/\d+"),
+    re.compile(r"\b(?:SSF|SSFR)\b"),
+    re.compile(r"\bBL/APAC/"),
+    re.compile(r"\bIOR\b"),
+    re.compile(r"\bHSL\s*\d+\.\d+"),
+    # Ibid / cross-references
+    re.compile(r"\bIbid\.?\b", re.IGNORECASE),
+    re.compile(r"\bop\.\s*cit\.?\b", re.IGNORECASE),
+    re.compile(r"\bloc\.\s*cit\.?\b", re.IGNORECASE),
+    re.compile(r"\bNote\s+\d+\s+above\b", re.IGNORECASE),
+    # See / cf. references
+    re.compile(r"\bSee\s+(?:also\s+)?(?:fn\.?\s*\d+|[A-Z][a-z]+)"),
+    re.compile(r"\bcf\.?\s+[A-Z]"),
+    # Newspaper / periodical citations
+    re.compile(r"\b(?:Malaya Tribune|Straits Times|Nanyang Siang Pau|The Sun)\b", re.IGNORECASE),
+    re.compile(r",\s*\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4}"),
+    # Official documents / dispatches
+    re.compile(r"\bSSD\s*,"),
+    re.compile(r"\bSSJ\s*,"),
+    re.compile(r"'s\s+(?:journal|diary)\s*,"),
+    re.compile(r"Annual\s+Report\s+\d{4}"),
+    re.compile(r"National\s+Archives\b"),
+    # URLs / internet sources
+    re.compile(r"https?://"),
+    re.compile(r"\baccessed\s+\d{1,2}\s+\w+\s+\d{4}"),
+    # Personal communications
+    re.compile(r"\bpersonal\s+communication\b", re.IGNORECASE),
+]
+
+
+def classify_footnote_type(text: str) -> Literal["citation", "explanatory", "mixed"]:
+    """Classify a footnote as citation, explanatory, or mixed.
+
+    - ``citation``: the footnote is primarily a bibliographic reference
+    - ``explanatory``: the footnote provides additional explanation with no external source
+    - ``mixed``: the footnote cites a source *and* includes substantial explanatory content
+    """
+    # Strip footnote number prefix (e.g. "35 Weld to..." -> "Weld to...")
+    stripped = re.sub(r"^\d{1,3}[\s.)]+", "", text.strip())
+
+    # Check for citation patterns
+    has_citation = any(p.search(stripped) for p in _CITATION_PATTERNS)
+    if not has_citation:
+        return "explanatory"
+
+    # Determine if there's substantial explanatory content beyond the citation
+    remaining = stripped
+    for p in _CITATION_PATTERNS:
+        remaining = p.sub("", remaining)
+    # Strip punctuation, whitespace, and short connecting words
+    remaining = re.sub(r"[\s.,;:()\[\]'\"-]+", " ", remaining).strip()
+    remaining_words = len(remaining.split()) if remaining else 0
+
+    if remaining_words <= 8:
+        return "citation"
+    return "mixed"
 
 
 def _is_full_page_bbox(bbox: BBox, page_h: float, tol: float = 2.0) -> bool:
@@ -48,6 +115,7 @@ def detect_footnotes(
                 fn_num = _extract_footnote_number(block.text_clean or block.text_raw)
                 if fn_num is not None:
                     fn_id = make_block_id(doc_id, page_num, "fn", "footnote", text_hash(block.text_raw))
+                    fn_type = classify_footnote_type(block.text_clean or block.text_raw)
                     all_footnotes.append(
                         FootnoteRecord(
                             footnote_id=fn_id,
@@ -57,6 +125,7 @@ def detect_footnotes(
                             bbox=block.bbox,
                             text_raw=block.text_raw,
                             text_clean=block.text_clean,
+                            footnote_type=fn_type,
                         )
                     )
                 continue
@@ -76,6 +145,7 @@ def detect_footnotes(
             if fn_num is not None:
                 block.block_type = "footnote"
                 fn_id = make_block_id(doc_id, page_num, "fn", "footnote", text_hash(block.text_raw))
+                fn_type = classify_footnote_type(text)
                 all_footnotes.append(
                     FootnoteRecord(
                         footnote_id=fn_id,
@@ -85,6 +155,7 @@ def detect_footnotes(
                         bbox=block.bbox,
                         text_raw=block.text_raw,
                         text_clean=block.text_clean,
+                        footnote_type=fn_type,
                     )
                 )
 

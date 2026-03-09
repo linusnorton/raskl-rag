@@ -107,6 +107,12 @@ context together.
 The footnote numbers in the inlined text correspond to the `[ref:N]` markers in the body text,
 so the relationship between claim and footnote is preserved in the chunk text itself.
 
+**Footnote type annotation:** Footnotes classified as `citation` or `mixed` by docproc are
+prefixed with `[cites:]` in the chunk text: `[N] [cites:] footnote text`. Explanatory footnotes
+retain the plain `[N] text` format. This marker signals to the RAG LLM that the footnote
+references an external primary source, enabling it to distinguish between what the secondary
+author claims and what the primary source records.
+
 **Footnote keying:** The footnote map is keyed by `footnote_id` (a unique content-based hash),
 not `footnote_number`. Many historical documents use per-page footnote numbering, so the same
 number (e.g. footnote 12) can appear on multiple pages. Keying by number caused collisions

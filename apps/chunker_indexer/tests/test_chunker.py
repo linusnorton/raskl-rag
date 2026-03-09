@@ -127,6 +127,21 @@ class TestFootnoteInlining:
         chunks = chunk_blocks(blocks, _make_output(), config)
         assert "Footnotes:" not in chunks[0].text
 
+    def test_citation_footnote_gets_cites_marker(self):
+        blocks = [
+            _sb("Text with reference.", footnote_refs=["fn1", "fn2", "fn3"]),
+        ]
+        footnotes = [
+            _FootnoteRecord(footnote_id="fn1", doc_id="test-doc", page_num_1=1, footnote_number=1, text_raw="Gullick (1992: 246).", text_clean="Gullick (1992: 246).", footnote_type="citation"),
+            _FootnoteRecord(footnote_id="fn2", doc_id="test-doc", page_num_1=1, footnote_number=2, text_raw="Head of sub-district.", text_clean="Head of sub-district.", footnote_type="explanatory"),
+            _FootnoteRecord(footnote_id="fn3", doc_id="test-doc", page_num_1=1, footnote_number=3, text_raw="Ibid. This reflects class divisions.", text_clean="Ibid. This reflects class divisions.", footnote_type="mixed"),
+        ]
+        config = ChunkerConfig(max_chunk_tokens=1000, min_chunk_tokens=1)
+        chunks = chunk_blocks(blocks, _make_output(footnotes), config)
+        assert "[1] [cites:] Gullick (1992: 246)." in chunks[0].text
+        assert "[2] Head of sub-district." in chunks[0].text
+        assert "[3] [cites:] Ibid. This reflects class divisions." in chunks[0].text
+
 
 class TestChunkMetadata:
     def test_chunk_id_deterministic(self):
