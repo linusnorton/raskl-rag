@@ -6,10 +6,24 @@ import re
 
 from .retriever import RetrievedChunk
 
+# Matches both single [N] and multi-citation [N, M, ...] patterns
+_CITATION_RE = re.compile(r'\[(\d+(?:\s*,\s*\d+)*)\]')
+
+
+def _parse_indices(match_text: str) -> list[int]:
+    """Parse comma-separated indices from a citation match group."""
+    return [int(x.strip()) for x in match_text.split(",")]
+
 
 def extract_cited_indices(text: str) -> set[int]:
-    """Extract [N] citation indices from LLM response text."""
-    return {int(m) for m in re.findall(r'\[(\d+)\]', text)}
+    """Extract citation indices from LLM response text.
+
+    Handles both [N] and [N, M] style citations.
+    """
+    indices: set[int] = set()
+    for m in _CITATION_RE.finditer(text):
+        indices.update(_parse_indices(m.group(1)))
+    return indices
 
 
 def extract_content(text: str) -> str:
@@ -18,19 +32,29 @@ def extract_content(text: str) -> str:
 
 
 def make_index_map(text: str) -> dict[int, int]:
-    """Map original [N] citation indices to consecutive display numbers (in order of first appearance)."""
+    """Map original [N] citation indices to consecutive display numbers (in order of first appearance).
+
+    Handles both [N] and [N, M] style citations.
+    """
     seen: dict[int, int] = {}
-    for m in re.finditer(r'\[(\d+)\]', text):
-        orig = int(m.group(1))
-        if orig not in seen:
-            seen[orig] = len(seen) + 1
+    for m in _CITATION_RE.finditer(text):
+        for orig in _parse_indices(m.group(1)):
+            if orig not in seen:
+                seen[orig] = len(seen) + 1
     return seen
 
 
 def renumber_text(text: str, mapping: dict[int, int]) -> str:
-    """Replace [N] citations in text using consecutive display numbers via sentinel to avoid cascading replacements."""
-    for orig, display in mapping.items():
-        text = text.replace(f"[{orig}]", f"[\x00{display}\x00]")
+    """Replace citation markers using consecutive display numbers.
+
+    Handles both [N] and [N, M] patterns. Uses a sentinel to avoid cascading replacements.
+    """
+    def _replace(m: re.Match) -> str:
+        indices = _parse_indices(m.group(1))
+        renumbered = [str(mapping.get(i, i)) for i in indices]
+        return "[\x00" + ", ".join(renumbered) + "\x00]"
+
+    text = _CITATION_RE.sub(_replace, text)
     return text.replace("[\x00", "[").replace("\x00]", "]")
 
 

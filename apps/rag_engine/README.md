@@ -105,11 +105,15 @@ different names) and iteratively gather context before synthesising a response.
 passage number in the prompt. After the response is complete, citations are renumbered
 consecutively in order of first appearance: `[7]`, `[3]`, `[12]` become `[1]`, `[2]`, `[3]`.
 
+Both single `[N]` and multi-citation `[N, M]` patterns are supported. Multi-citations like
+`[23, 24]` are renumbered element-wise: if 23→`[2]` and 24→`[3]`, the result is `[2, 3]`.
+
 A sentinel character (`\x00`) is used during replacement to prevent cascading substitutions
 (e.g. `[1]` → `[2]` → `[3]`).
 
 Only chunks that the LLM actually cited are included in the formatted source list. If no
 citations are detected (e.g. the LLM forgot to cite), all chunks are shown as a fallback.
+Citations inside `<think>` blocks are excluded — only citations in the visible response count.
 
 **Source format:**
 ```

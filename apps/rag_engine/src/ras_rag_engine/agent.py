@@ -141,9 +141,9 @@ def run_agent_streaming(
             fn_name = tc["function"]["name"]
             fn_args = tc["function"]["arguments"]
             result_text, new_chunks = execute_tool_call(fn_name, fn_args, config, start_index=len(all_chunks) + 1)
-            # Deduplicate: only keep chunks not already retrieved
-            existing_ids = {c.chunk_id for c in all_chunks}
-            new_chunks = [c for c in new_chunks if c.chunk_id not in existing_ids]
+            # Keep ALL chunks (including duplicates) so that positions match the
+            # [N] numbers the LLM sees in tool results.  format_citations()
+            # deduplicates by chunk_id when building the Sources list.
             all_chunks.extend(new_chunks)
 
             messages.append({
