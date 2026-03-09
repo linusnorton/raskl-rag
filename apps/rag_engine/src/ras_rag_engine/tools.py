@@ -118,19 +118,25 @@ def format_chunks_for_context(
         display_end = c.end_page
         pages = f"p.{display_start}" if display_start == display_end else f"pp.{display_start}-{display_end}"
         heading = f" — {c.section_heading}" if c.section_heading else ""
+        # Document type label
+        type_label = ""
+        if c.document_type == "primary_source":
+            type_label = " [Primary Source]"
+        elif c.document_type == "journal_article":
+            type_label = " [Journal Article]"
         # Use DB metadata, falling back to parsing the source filename
         fn_author, fn_year = _parse_filename_metadata(c.source_filename)
         author = c.author or fn_author
         year = fn_year or (str(c.year) if c.year else "")
         # Build citation-style header: Author (Year), "Title", pages
         if author and year:
-            header = f"[{i}] {author} ({year}), \"{source}\", {pages}{heading}"
+            header = f"[{i}]{type_label} {author} ({year}), \"{source}\", {pages}{heading}"
         elif author:
-            header = f"[{i}] {author}, \"{source}\", {pages}{heading}"
+            header = f"[{i}]{type_label} {author}, \"{source}\", {pages}{heading}"
         elif year:
-            header = f"[{i}] \"{source}\" ({year}), {pages}{heading}"
+            header = f"[{i}]{type_label} \"{source}\" ({year}), {pages}{heading}"
         else:
-            header = f"[{i}] {source}, {pages}{heading}"
+            header = f"[{i}]{type_label} {source}, {pages}{heading}"
 
         chunk_text = f"{header}\n{c.text}"
 

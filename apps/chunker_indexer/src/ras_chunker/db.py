@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS documents (
     title TEXT,
     author TEXT,
     year INTEGER,
+    publication TEXT,
+    document_type TEXT,
     page_offset INTEGER NOT NULL DEFAULT 0,
     sha256_pdf TEXT NOT NULL,
     indexed_at TIMESTAMPTZ DEFAULT now()
@@ -65,6 +67,12 @@ CREATE INDEX IF NOT EXISTS idx_chunk_changes_doc ON chunk_changes(doc_id);
 -- Migration: add s3_prefix to existing databases
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS s3_prefix TEXT NOT NULL DEFAULT '';
 
+-- Migration: add document_type to existing databases
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS document_type TEXT;
+
+-- Migration: add publication to existing databases
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS publication TEXT;
+
 CREATE TABLE IF NOT EXISTS figures (
     figure_id TEXT PRIMARY KEY,
     doc_id TEXT REFERENCES documents(doc_id) ON DELETE CASCADE,
@@ -104,13 +112,15 @@ def upsert_document(conn: psycopg.Connection, meta: DocMeta) -> None:
     """Insert or update document metadata."""
     conn.execute(
         """
-        INSERT INTO documents (doc_id, source_filename, title, author, year, page_offset, sha256_pdf, s3_prefix)
-        VALUES (%(doc_id)s, %(source_filename)s, %(title)s, %(author)s, %(year)s, %(page_offset)s, %(sha256_pdf)s, %(s3_prefix)s)
+        INSERT INTO documents (doc_id, source_filename, title, author, year, publication, document_type, page_offset, sha256_pdf, s3_prefix)
+        VALUES (%(doc_id)s, %(source_filename)s, %(title)s, %(author)s, %(year)s, %(publication)s, %(document_type)s, %(page_offset)s, %(sha256_pdf)s, %(s3_prefix)s)
         ON CONFLICT (doc_id) DO UPDATE SET
             source_filename = EXCLUDED.source_filename,
             title = EXCLUDED.title,
             author = EXCLUDED.author,
             year = EXCLUDED.year,
+            publication = EXCLUDED.publication,
+            document_type = EXCLUDED.document_type,
             page_offset = EXCLUDED.page_offset,
             sha256_pdf = EXCLUDED.sha256_pdf,
             s3_prefix = EXCLUDED.s3_prefix,

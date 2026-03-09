@@ -42,6 +42,8 @@ class DocMeta(BaseModel):
     title: str | None = None
     author: str | None = None
     year: int | None = None
+    publication: str | None = None
+    document_type: str | None = None
     page_offset: int = 0
     sha256_pdf: str
     s3_prefix: str = ""

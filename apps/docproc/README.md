@@ -35,7 +35,7 @@ ras-rag-engine  (OpenAI-compatible RAG API → Open WebUI)
 
 ## Architecture overview
 
-The pipeline runs sixteen stages in sequence. Each stage reads from the previous stage's output
+The pipeline runs seventeen stages in sequence. Each stage reads from the previous stage's output
 and writes an augmented version forward. The final stage writes JSONL files to disk.
 
 | # | Stage | What it does |
@@ -44,6 +44,7 @@ and writes an augmented version forward. The final stage writes JSONL files to d
 | 2 | Extract (Qwen3 VL) | Extracts structured text blocks from the PDF via Bedrock |
 | 3 | Extract (MuPDF) | Low-level extraction: fonts, span data, images, raw metadata |
 | 4 | Extract Metadata | Parses the JSTOR/MUSE cover page for title, author, year, DOI, journal pages |
+| 4c | Classify Doc Type | Classifies the document as `primary_source` or `journal_article` via LLM |
 | 5 | Normalize Text | NFKC normalization, dehyphenation, superscript cleanup |
 | 6 | Detect Boilerplate | Removes platform headers, running footers, page numbers |
 | 7 | Detect Content Area | Computes the usable text area per page |
@@ -200,13 +201,31 @@ improvements over time.
 **`[cloud]` dependency:** The Lambda handler, Qwen3 VL backend, and SES notifications require
 `boto3`, which is an optional `[cloud]` extra in `pyproject.toml`.
 
+### D8 — Document type classification
+
+**What we chose:** An LLM-based classification stage (Stage 4c) that labels each document as
+`primary_source` or `journal_article`. The classifier sends the first 2 pages of extracted text
+plus existing metadata (title, author, year, publication, filename) to Qwen3 VL with a zero-shot
+prompt. The LLM returns a JSON object with `document_type`, `confidence`, and `reasoning`.
+
+**Why these two types:** The JMBRAS corpus contains two fundamentally different kinds of documents:
+peer-reviewed academic papers (secondary sources) and colonial-era journals, diaries, and
+correspondence (primary sources). This distinction maps to the primary/secondary source taxonomy
+from library science. The RAG system uses this label to (1) annotate context headers with
+`[Primary Source]` or `[Journal Article]` tags, (2) guide the LLM to prefer primary sources for
+factual claims about historical events, and (3) display source type in citation output.
+
+**Why a string field (not enum):** Using `str | None` means new types (e.g. `book_chapter`,
+`government_report`) can be added without schema migration. The `None` default provides graceful
+degradation for documents processed before this stage was added.
+
 ## Output format
 
 All output goes to `data/out/{doc_id}/`:
 
 | File | Contents |
 |------|----------|
-| `documents.jsonl` | One record: title, author, year, DOI, page range, `page_offset` |
+| `documents.jsonl` | One record: title, author, year, DOI, page range, `page_offset`, `document_type` |
 | `pages.jsonl` | One record per page: dimensions, rotation, content bounding box |
 | `text_blocks.jsonl` | Body text blocks: raw text, cleaned text, language, bbox, block type |
 | `removed_blocks.jsonl` | Blocks removed as boilerplate (for debugging) |

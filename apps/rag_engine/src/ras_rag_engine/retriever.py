@@ -38,6 +38,8 @@ class RetrievedChunk:
     title: str | None
     author: str | None
     year: int | None
+    publication: str | None = None
+    document_type: str | None = None
     page_offset: int = 0
 
 
@@ -86,7 +88,7 @@ fused AS (
     WHERE t.chunk_id NOT IN (SELECT chunk_id FROM vector_results)
 )
 SELECT f.chunk_id, f.doc_id, f.text, f.start_page, f.end_page, f.section_heading,
-       d.source_filename, d.title, d.author, d.year, d.page_offset, f.rrf_score AS score
+       d.source_filename, d.title, d.author, d.year, d.page_offset, d.publication, d.document_type, f.rrf_score AS score
 FROM fused f
 JOIN documents d ON f.doc_id = d.doc_id
 ORDER BY f.rrf_score DESC
@@ -148,7 +150,9 @@ def retrieve(query: str, config: RAGConfig, top_k: int | None = None) -> list[Re
             author=row[8],
             year=row[9],
             page_offset=row[10],
-            score=row[11],
+            publication=row[11],
+            document_type=row[12],
+            score=row[13],
         ))
 
     if config.rerank_enabled and chunks:

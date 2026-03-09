@@ -40,6 +40,7 @@ def _run_pipeline(pdf_path: Path, out_dir: Path, max_pages: int | None, page_ran
     from tqdm import tqdm
 
     from ras_docproc.config import PipelineConfig
+    from ras_docproc.pipeline.classify_doctype import classify_document_type
     from ras_docproc.pipeline.boilerplate import detect_boilerplate
     from ras_docproc.pipeline.detect_captions import detect_captions
     from ras_docproc.pipeline.detect_content_area import detect_content_area
@@ -70,6 +71,7 @@ def _run_pipeline(pdf_path: Path, out_dir: Path, max_pages: int | None, page_ran
         "Extract (Qwen3 VL)",
         "Extract (MuPDF)",
         "Extract metadata",
+        "Classify doc type",
         "Normalize text",
         "Detect boilerplate",
         "Detect content area",
@@ -160,6 +162,11 @@ def _run_pipeline(pdf_path: Path, out_dir: Path, max_pages: int | None, page_ran
         # Adjust page_records
         for pr in page_records:
             pr.page_num_1 = pr.page_num_1 + offset
+
+    # Step 4c: Classify document type
+    progress.set_postfix_str("Classify doc type")
+    document = classify_document_type(document, blocks_by_page, config)
+    progress.update(1)
 
     # Step 5: Normalize text
     progress.set_postfix_str("Normalize")

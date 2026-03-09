@@ -58,6 +58,33 @@ def renumber_text(text: str, mapping: dict[int, int]) -> str:
     return text.replace("[\x00", "[").replace("\x00]", "]")
 
 
+def _format_citation_line(label: int, c: RetrievedChunk, pages: str) -> str:
+    """Format a single citation in academic style.
+
+    Target: [N] Author (year). Title. Publication, pages · Type
+    Fields are omitted when not available.
+    """
+    segments: list[str] = []
+
+    # Author (year)
+    if c.author:
+        segments.append(f"{c.author} ({c.year})" if c.year else c.author)
+    elif c.year:
+        segments.append(f"({c.year})")
+
+    # Title — italicised
+    title = c.title or c.source_filename
+    segments.append(f"*{title}*")
+
+    # Publication: Publisher, pages
+    if c.publication:
+        segments.append(f"{c.publication}, {pages}")
+    else:
+        segments.append(pages)
+
+    return f"[{label}] " + ". ".join(segments)
+
+
 def format_citations(chunks: list[RetrievedChunk], response_text: str = "", index_map: dict[int, int] | None = None) -> str:
     """Build a deduplicated markdown citation block from retrieved chunks.
 
@@ -86,20 +113,12 @@ def format_citations(chunks: list[RetrievedChunk], response_text: str = "", inde
         display_n += 1
         label = index_map[i] if index_map and i in index_map else display_n
 
-        source = c.title or c.source_filename
         display_start = c.start_page
         display_end = c.end_page
         pages = f"p.{display_start}" if display_start == display_end else f"pp.{display_start}-{display_end}"
-        heading = f" — {c.section_heading}" if c.section_heading else ""
-        author_year = ""
-        if c.author or c.year:
-            parts = []
-            if c.author:
-                parts.append(c.author)
-            if c.year:
-                parts.append(str(c.year))
-            author_year = f" ({', '.join(parts)})"
-        lines.append(f"[{label}] {source}{author_year}, {pages}{heading}")
+
+        line = _format_citation_line(label, c, pages)
+        lines.append(line)
 
     if not lines:
         return ""

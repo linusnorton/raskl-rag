@@ -48,6 +48,7 @@ class DocumentRecord(BaseModel):
     year: int | None = None
     doi: str | None = None
     url: str | None = None
+    document_type: str | None = None
     page_offset: int = 0
     extraction_version: str = "0.1.0"
     config_hash: str | None = None

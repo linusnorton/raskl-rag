@@ -39,6 +39,10 @@ Guidelines:
   footnote section), distinguish between what the secondary author claims and what the
   primary source records. Mention the original source naturally, e.g. "according to a colonial
   office dispatch (cited in Author [N])".
+- Sources marked [Primary Source] are firsthand historical accounts (diaries, letters, reports).
+  Sources marked [Journal Article] are modern scholarly analysis. For factual claims about
+  historical events, primary sources are most authoritative. For scholarly interpretation and
+  broader context, journal articles provide the analytical framework.
 - Do not invent facts. Only state what the sources say.
 - When the context contains "Available image" lines with markdown like ![caption](url), ALWAYS include them in your response exactly as written. These are real, viewable images from the collection.\
 """

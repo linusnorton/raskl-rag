@@ -276,12 +276,18 @@ benefit for this collection (most figures have explicit captions).
 
 ### D14 — Context passage formatting
 
-**What we chose:** Retrieved chunks are formatted with citation-style headers:
+**What we chose:** Retrieved chunks are formatted with citation-style headers that include a
+document type label when available:
 
 ```
-[1] Author (Year), "Title", pp.X-Y — Section Heading
-[chunk text]
+[1] [Primary Source] Swettenham (1875), "Journal 1874-1876", pp.12-14 — October Diary
+[1] [Journal Article] Abdullah (2011), "Title", pp.1-22 — Introduction
 ```
+
+The system prompt includes guidance: primary sources are authoritative for factual claims about
+historical events; journal articles provide scholarly interpretation and broader context.
+
+The formatted citation output also includes the document type as a suffix (e.g. `· Primary Source`).
 
 **Metadata fallback:** If the database `author` or `year` fields are empty (common for
 historical documents where metadata was not parsed), the system parses the source filename
@@ -290,6 +296,10 @@ historical documents where metadata was not parsed), the system parses the sourc
 **Why citation-style headers:** The LLM needs to know which document and page a passage comes
 from to produce accurate citations. The header format matches academic citation conventions,
 which the LLM understands well.
+
+**Why document type labels:** The JMBRAS corpus mixes primary sources (diaries, letters) and
+secondary sources (journal articles). Tagging each passage lets the LLM weigh evidence
+appropriately — preferring primary sources for factual claims and journal articles for analysis.
 
 ## Configuration
 

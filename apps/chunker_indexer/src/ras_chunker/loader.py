@@ -114,6 +114,8 @@ class DocprocOutput:
             title=raw.get("title"),
             author=raw.get("author"),
             year=raw.get("year"),
+            publication=raw.get("publication"),
+            document_type=raw.get("document_type"),
             page_offset=raw.get("page_offset", 0),
             sha256_pdf=raw["sha256_pdf"],
         )
