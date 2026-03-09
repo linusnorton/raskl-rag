@@ -38,7 +38,7 @@ class PipelineConfig(BaseSettings):
     bedrock_ocr_model_id: str = Field(default="qwen.qwen3-vl-235b-a22b", description="Bedrock model ID for OCR")
     qwen3vl_dpi: int = Field(default=300, description="DPI for page rendering when using Qwen3 VL backend")
     qwen3vl_max_tokens: int = Field(default=4096, description="Max tokens per page for Qwen3 VL OCR")
-    qwen3vl_max_workers: int = Field(default=6, description="Max parallel Bedrock calls for Qwen3 VL")
+    qwen3vl_max_workers: int = Field(default=20, description="Max parallel Bedrock calls for Qwen3 VL")
     qwen3vl_system_prompt: str = Field(
         default="""\
 You are a document OCR engine. Convert the page image to clean Markdown text.

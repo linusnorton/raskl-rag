@@ -19,8 +19,8 @@ MAX_RETRIES = 3
 RETRY_BASE_DELAY = 5  # seconds
 
 
-MAX_IMAGE_BYTES = 4_500_000  # 4.5 MB — stay under Bedrock's 5 MB per-image limit
-DPI_FALLBACKS = (200, 150)  # DPI steps to try if the image is too large
+MAX_IMAGE_BYTES = 3_700_000  # 3.7 MB — just under Bedrock's 3.75 MB per-image limit
+DPI_FALLBACKS = (200, 150, 120)  # DPI steps to try if the image is too large
 
 
 def _render_page_to_png_bytes(pdf_path: str, page_index: int, dpi: int) -> tuple[bytes, float, float]:
@@ -39,6 +39,7 @@ def _render_page_to_png_bytes(pdf_path: str, page_index: int, dpi: int) -> tuple
             mat = fitz.Matrix(zoom, zoom)
             pix = page.get_pixmap(matrix=mat)
             png_bytes = pix.tobytes("png")
+            logger.debug("Page %d: %d DPI → %d bytes (limit %d)", page_index + 1, current_dpi, len(png_bytes), MAX_IMAGE_BYTES)
             if len(png_bytes) <= MAX_IMAGE_BYTES:
                 if current_dpi != dpi:
                     logger.info("Page %d: reduced DPI from %d to %d (%d bytes)", page_index + 1, dpi, current_dpi, len(png_bytes))
