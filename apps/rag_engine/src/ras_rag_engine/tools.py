@@ -140,8 +140,8 @@ def format_chunks_for_context(
             for fig in page_figures.get((c.doc_id, p), []):
                 if fig.figure_id not in seen_figs:
                     seen_figs.add(fig.figure_id)
-                    caption = fig.caption or "Untitled figure"
-                    chunk_text += f"\n[Image on p.{fig.page_num}: \"{caption}\" → ![{caption}]({fig.image_url})]"
+                    caption = fig.caption or f"Figure on p.{fig.page_num}"
+                    chunk_text += f"\n\nAvailable image (include in response): ![{caption}]({fig.image_url})"
 
         parts.append(chunk_text)
     return "\n\n".join(parts)

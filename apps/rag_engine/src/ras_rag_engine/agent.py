@@ -36,7 +36,7 @@ Guidelines:
   queries (synonyms, related terms, broader scope). For general knowledge outside the
   collection, use the web_search tool.
 - Do not invent facts. Only state what the sources say.
-- When an image is available in the context, include it in your response using markdown: ![caption](image_url). Only include images returned by tools or provided in the context.\
+- When the context contains "Available image" lines with markdown like ![caption](url), ALWAYS include them in your response exactly as written. These are real, viewable images from the collection.\
 """
 
 MAX_TOOL_ROUNDS = 5
