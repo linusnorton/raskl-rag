@@ -44,14 +44,47 @@ class _FootnoteRefRecord(BaseModel):
     footnote_id: str | None = None
 
 
+class _BBox(BaseModel):
+    x0: float
+    y0: float
+    x1: float
+    y1: float
+
+    @property
+    def width(self) -> float:
+        return self.x1 - self.x0
+
+    @property
+    def height(self) -> float:
+        return self.y1 - self.y0
+
+
+# Minimum dimension (PDF points) for a figure to be indexed.
+# Filters out logos, icons, and journal cover thumbnails.
+_MIN_FIGURE_DIMENSION = 150  # ~2 inches
+
+
 class _FigureRecord(BaseModel):
     figure_id: str
     doc_id: str
     page_num_1: int
+    bbox: _BBox | None = None
     asset_jpg_path: str | None = None
     asset_thumb_path: str | None = None
     caption_text_clean: str = ""
     derived_from: str | None = None
+
+
+def _is_substantial_figure(fig: _FigureRecord) -> bool:
+    """Filter out rendered clips, logos, icons, and journal cover thumbnails."""
+    if fig.derived_from == "rendered_clip":
+        return False
+    # Page 1 uncaptioned images are JSTOR/Project MUSE cover elements (logo, journal cover)
+    if fig.page_num_1 == 1 and not fig.caption_text_clean:
+        return False
+    if fig.bbox is None:
+        return True  # No bbox info — keep by default
+    return fig.bbox.width >= _MIN_FIGURE_DIMENSION and fig.bbox.height >= _MIN_FIGURE_DIMENSION
 
 
 def _read_jsonl(path: Path, model_class: type) -> list:
@@ -97,12 +130,12 @@ class DocprocOutput:
             _read_jsonl(ref_path, _FootnoteRefRecord) if ref_path.exists() else []
         )
 
-        # Load figures (optional) — filter out rendered rotated page clips
+        # Load figures (optional) — filter out rendered clips and small images (logos, icons)
         fig_path = doc_dir / "figures.jsonl"
         self.figures: list[_FigureRecord] = []
         if fig_path.exists():
             all_figs = _read_jsonl(fig_path, _FigureRecord)
-            self.figures = [f for f in all_figs if f.derived_from != "rendered_clip"]
+            self.figures = [f for f in all_figs if _is_substantial_figure(f)]
 
     @property
     def doc_id(self) -> str:
