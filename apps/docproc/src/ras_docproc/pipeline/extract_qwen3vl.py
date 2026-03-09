@@ -19,17 +19,34 @@ MAX_RETRIES = 3
 RETRY_BASE_DELAY = 5  # seconds
 
 
+MAX_IMAGE_BYTES = 4_500_000  # 4.5 MB — stay under Bedrock's 5 MB per-image limit
+DPI_FALLBACKS = (200, 150)  # DPI steps to try if the image is too large
+
+
 def _render_page_to_png_bytes(pdf_path: str, page_index: int, dpi: int) -> tuple[bytes, float, float]:
-    """Render a PDF page to PNG bytes. Returns (png_bytes, page_width_pts, page_height_pts)."""
+    """Render a PDF page to PNG bytes, reducing DPI if needed to stay under Bedrock's size limit.
+
+    Returns (png_bytes, page_width_pts, page_height_pts).
+    """
     doc = fitz.open(pdf_path)
     try:
         page = doc[page_index]
         page_width = page.rect.width
         page_height = page.rect.height
-        zoom = dpi / 72.0
-        mat = fitz.Matrix(zoom, zoom)
-        pix = page.get_pixmap(matrix=mat)
-        return pix.tobytes("png"), page_width, page_height
+
+        for current_dpi in (dpi, *DPI_FALLBACKS):
+            zoom = current_dpi / 72.0
+            mat = fitz.Matrix(zoom, zoom)
+            pix = page.get_pixmap(matrix=mat)
+            png_bytes = pix.tobytes("png")
+            if len(png_bytes) <= MAX_IMAGE_BYTES:
+                if current_dpi != dpi:
+                    logger.info("Page %d: reduced DPI from %d to %d (%d bytes)", page_index + 1, dpi, current_dpi, len(png_bytes))
+                return png_bytes, page_width, page_height
+
+        # Last resort: use lowest DPI even if still over limit
+        logger.warning("Page %d: image still %d bytes at %d DPI", page_index + 1, len(png_bytes), DPI_FALLBACKS[-1])
+        return png_bytes, page_width, page_height
     finally:
         doc.close()
 
@@ -77,13 +94,15 @@ def _call_bedrock(
             text = re.sub(r"\n?```\s*$", "", text)
             return text
         except (ReadTimeoutError, ClientError) as e:
-            # Don't retry non-transient errors (auth, access denied, bad request)
-            retryable = isinstance(e, ReadTimeoutError) or e.response["Error"]["Code"] in (
-                "ThrottlingException",
-                "ServiceUnavailableException",
-                "ValidationException",
-                "InternalServerException",
-            )
+            # Don't retry non-transient errors (auth, access denied, payload too large)
+            if isinstance(e, ReadTimeoutError):
+                retryable = True
+            elif e.response["Error"]["Code"] in ("ThrottlingException", "ServiceUnavailableException", "InternalServerException"):
+                retryable = True
+            elif e.response["Error"]["Code"] == "ValidationException" and "limit exceeded" not in str(e):
+                retryable = True
+            else:
+                retryable = False
             if not retryable or attempt == MAX_RETRIES - 1:
                 raise
             delay = RETRY_BASE_DELAY * (2**attempt)
