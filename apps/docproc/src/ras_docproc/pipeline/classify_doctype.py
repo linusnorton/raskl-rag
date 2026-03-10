@@ -18,7 +18,7 @@ You are a document classifier for a historical archive. Given the metadata and o
 
 Signals for journal_article: presence of an abstract, numbered footnotes citing other works, a bibliography/references section, academic author attribution with year, JSTOR/Project MUSE metadata, analytical language.
 
-Signals for primary_source: diary entries with dates, first-person accounts, correspondence, government dispatches, translations of historical documents, no modern scholarly apparatus.
+Signals for primary_source: diary entries with dates, first-person accounts, correspondence, government dispatches, translations of historical documents, no modern scholarly apparatus. Note: a diary or journal published by a scholarly society (e.g. via JSTOR) is still a primary source, not a journal article — classify based on the content, not the publication channel.
 
 Respond with ONLY a JSON object (no markdown fencing):
 {"document_type": "journal_article" or "primary_source", "confidence": 0.0-1.0, "reasoning": "brief explanation"}"""
@@ -29,11 +29,15 @@ def classify_document_type(
     blocks_by_page: dict[int, list[TextBlockRecord]],
     config: PipelineConfig,
 ) -> DocumentRecord:
-    """Classify the document type using LLM analysis of metadata + first 2 pages.
+    """Classify the document type using LLM analysis of metadata + opening text.
+
+    Collects the first ~3000 characters of actual text content, skipping
+    pages that are blank, title sheets, or image-only (e.g. JSTOR cover pages).
+    This avoids misclassification when early pages lack substantive content.
 
     Mutates and returns the DocumentRecord with populated document_type field.
     """
-    # Build context from metadata + first 2 pages of text
+    # Build context from metadata
     meta_parts = []
     if document.title:
         meta_parts.append(f"Title: {document.title}")
@@ -51,14 +55,23 @@ def classify_document_type(
 
     meta_text = "\n".join(meta_parts)
 
-    # Collect text from first 2 pages
-    page_texts = []
-    for page_num in sorted(blocks_by_page.keys())[:2]:
-        for block in blocks_by_page[page_num]:
-            text = block.text_clean or block.text_raw
-            page_texts.append(text)
+    # Collect text across pages until we have enough substantive content.
+    # Skip pages with very little text (title sheets, blanks, images).
+    _MIN_PAGE_TEXT = 50  # characters — skip pages shorter than this
+    collected: list[str] = []
+    collected_len = 0
+    for page_num in sorted(blocks_by_page.keys()):
+        page_text = "\n".join(
+            (b.text_clean or b.text_raw) for b in blocks_by_page[page_num]
+        ).strip()
+        if len(page_text) < _MIN_PAGE_TEXT:
+            continue
+        collected.append(page_text)
+        collected_len += len(page_text)
+        if collected_len >= 3000:
+            break
 
-    opening_text = "\n\n".join(page_texts)[:3000]  # Cap at ~3000 chars
+    opening_text = "\n\n".join(collected)[:3000]
 
     user_message = f"METADATA:\n{meta_text}\n\nOPENING TEXT:\n{opening_text}"
 
