@@ -6,6 +6,16 @@ import re
 
 from .retriever import RetrievedChunk
 
+_FILENAME_RE = re.compile(r"^(.+?)\s*\((\d{4})\)")
+
+
+def _parse_filename_metadata(filename: str) -> tuple[str, str]:
+    """Extract author and year from source_filename like 'Abdullah (2011) JMBRAS 84(1), 1-22.pdf'."""
+    m = _FILENAME_RE.match(filename)
+    if m:
+        return m.group(1).strip(), m.group(2)
+    return "", ""
+
 # Matches both single [N] and multi-citation [N, M, ...] patterns
 _CITATION_RE = re.compile(r'\[(\d+(?:\s*,\s*\d+)*)\]')
 
@@ -66,11 +76,16 @@ def _format_citation_line(label: int, c: RetrievedChunk, pages: str) -> str:
     """
     segments: list[str] = []
 
+    # Use DB metadata, falling back to parsing the source filename
+    fn_author, fn_year = _parse_filename_metadata(c.source_filename)
+    author = c.author or fn_author
+    year = fn_year or (str(c.year) if c.year else "")
+
     # Author (year)
-    if c.author:
-        segments.append(f"{c.author} ({c.year})" if c.year else c.author)
-    elif c.year:
-        segments.append(f"({c.year})")
+    if author:
+        segments.append(f"{author} ({year})" if year else author)
+    elif year:
+        segments.append(f"({year})")
 
     # Title — italicised
     title = c.title or c.source_filename

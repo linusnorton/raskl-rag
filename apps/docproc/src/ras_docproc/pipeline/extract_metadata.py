@@ -59,6 +59,9 @@ PLATFORM_HEADINGS = {"PROJECT MUSE", "JSTOR"}
 # Year extraction from various contexts
 YEAR_RE = re.compile(r"\b(1[5-9]\d{2}|20[0-2]\d)\b")
 
+# Filename pattern: "Author (YEAR) ..."
+_FILENAME_META_RE = re.compile(r"^(.+?)\s*\((\d{4})\)")
+
 
 def _clean_title(t: str) -> str:
     """Strip markdown formatting artifacts from title text."""
@@ -161,6 +164,12 @@ def extract_metadata(
     author_match = re.search(r"Author\(?s?\)?:\s*(.+)", cover_text, re.IGNORECASE)
     if author_match and not document.author:
         document.author = author_match.group(1).strip()
+
+    # Author fallback: parse from filename pattern "Author (YEAR) ..."
+    if not document.author and document.source_filename:
+        fn_m = _FILENAME_META_RE.match(document.source_filename)
+        if fn_m:
+            document.author = fn_m.group(1).strip()
 
     # Source: line - parse journal, volume, issue, year, pages
     source_match = SOURCE_RE.search(cover_text)
@@ -297,13 +306,14 @@ def extract_metadata(
                     document.title = _clean_title(text[:200])
                     break
 
-    # Year fallback 1: extract from filename pattern "Author (YEAR) JMBRAS..."
-    if not document.year:
-        fn_year_m = re.search(r"\((\d{4})\)", document.source_filename or "")
+    # Year: prefer filename year (curated by user) over cover page dates
+    # which can differ from the actual publication year (e.g. JSTOR "June 2010" vs published 2011)
+    if document.source_filename:
+        fn_year_m = re.search(r"\((\d{4})\)", document.source_filename)
         if fn_year_m:
             document.year = int(fn_year_m.group(1))
 
-    # Year fallback 2: search cover text (risky — may find historical dates)
+    # Year fallback: search cover text (risky — may find historical dates)
     if not document.year:
         year_m = YEAR_RE.search(cover_text)
         if year_m:

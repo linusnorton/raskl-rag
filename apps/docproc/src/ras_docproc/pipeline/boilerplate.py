@@ -75,26 +75,42 @@ def detect_boilerplate(
 
     for page_num, blocks in blocks_by_page.items():
         kept: list[TextBlockRecord] = []
+        # Pre-scan: identify which block indices match boilerplate
+        boilerplate_flags: list[bool] = []
         for block in blocks:
-            is_boilerplate = False
+            is_bp = False
 
             # Check if block text matches boilerplate patterns
             for line in block.text_clean.splitlines():
                 normalized = normalize_for_frequency(line)
                 if normalized in boilerplate_lines:
-                    is_boilerplate = True
+                    is_bp = True
                     break
 
             # Remove known platform headings (e.g. "PROJECT MUSE®" on cover pages)
-            if not is_boilerplate:
+            if not is_bp:
                 text_normalized = re.sub(r"[^\w\s]", "", block.text_clean.strip()).strip().upper()
-                is_boilerplate = text_normalized in {p.upper() for p in PLATFORM_HEADINGS}
+                is_bp = text_normalized in {p.upper() for p in PLATFORM_HEADINGS}
 
             # Also remove header/footer zone blocks from short documents less aggressively
             if block.block_type in ("header", "footer"):
-                is_boilerplate = True
+                is_bp = True
 
+            boilerplate_flags.append(is_bp)
+
+        # Find first and last non-boilerplate block indices to classify
+        # boilerplate blocks as header (before content) or footer (after content)
+        first_content = next((i for i, bp in enumerate(boilerplate_flags) if not bp), len(blocks))
+        last_content = next((i for i in range(len(blocks) - 1, -1, -1) if not boilerplate_flags[i]), -1)
+
+        for idx, (block, is_boilerplate) in enumerate(zip(blocks, boilerplate_flags)):
             if is_boilerplate:
+                # Reclassify frequency-detected boilerplate by position
+                if block.block_type not in ("header", "footer"):
+                    if idx <= first_content:
+                        block.block_type = "header"
+                    elif idx >= last_content:
+                        block.block_type = "footer"
                 removed.append(block)
             else:
                 kept.append(block)
