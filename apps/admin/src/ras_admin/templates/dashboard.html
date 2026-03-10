@@ -49,25 +49,58 @@
 </div>
 
 <div class="card">
-  <h2>Recent Activity</h2>
-  {% if recent %}
+  <h2>Pipeline Processing</h2>
+  {% if statuses %}
   <table>
-    <tr><th>Document</th><th>Version</th><th>Added</th><th>Removed</th><th>Changed</th><th>Unchanged</th><th>Total</th><th>Indexed</th></tr>
-    {% for r in recent %}
-    <tr>
-      <td><a href="/documents/{{ r.doc_id }}" class="truncate" style="display:block;">{{ r.source_filename or r.doc_id[:12] }}</a></td>
-      <td>v{{ r.version }}</td>
-      <td>{{ r.chunks_added }}</td>
-      <td>{{ r.chunks_removed }}</td>
-      <td>{{ r.chunks_text_changed }}</td>
-      <td>{{ r.chunks_unchanged }}</td>
-      <td>{{ r.chunks_total }}</td>
-      <td>{{ r.indexed_at.strftime('%Y-%m-%d %H:%M') if r.indexed_at else "" }}</td>
+    <tr><th>File</th><th>Upload</th><th>DocProc</th><th>Indexing</th><th>Done</th><th>Updated</th></tr>
+    {% for s in statuses %}
+    {% set stage = s.get("stage", "unknown") %}
+    {% set is_error = stage == "error" %}
+    <tr{% if is_error %} style="background:#fef2f2;"{% endif %}>
+      <td class="truncate" style="max-width:300px;">{{ s.get("filename", "?") }}</td>
+      {% if is_error %}
+        {% set err_stage = s.get("error_stage", "uploaded") %}
+        <td>{% if err_stage in ["uploaded"] %}<span style="color:#ef4444;" title="{{ s.get('error', '') }}">&#10007;</span>{% else %}<span style="color:#22c55e;">&#10003;</span>{% endif %}</td>
+        <td>{% if err_stage in ["processing"] %}<span style="color:#ef4444;" title="{{ s.get('error', '') }}">&#10007;</span>{% elif err_stage in ["uploaded"] %}<span style="color:#94a3b8;">&#9675;</span>{% else %}<span style="color:#22c55e;">&#10003;</span>{% endif %}</td>
+        <td>{% if err_stage in ["indexing"] %}<span style="color:#ef4444;" title="{{ s.get('error', '') }}">&#10007;</span>{% elif err_stage in ["uploaded", "processing", "processed"] %}<span style="color:#94a3b8;">&#9675;</span>{% else %}<span style="color:#22c55e;">&#10003;</span>{% endif %}</td>
+        <td><span style="color:#94a3b8;">&#9675;</span></td>
+      {% elif stage == "uploaded" %}
+        <td><span style="color:#22c55e;">&#10003;</span></td>
+        <td><span style="color:#94a3b8;">&#9675;</span></td>
+        <td><span style="color:#94a3b8;">&#9675;</span></td>
+        <td><span style="color:#94a3b8;">&#9675;</span></td>
+      {% elif stage == "processing" %}
+        <td><span style="color:#22c55e;">&#10003;</span></td>
+        <td><span style="color:#3b82f6;">&#9203;</span></td>
+        <td><span style="color:#94a3b8;">&#9675;</span></td>
+        <td><span style="color:#94a3b8;">&#9675;</span></td>
+      {% elif stage == "processed" %}
+        <td><span style="color:#22c55e;">&#10003;</span></td>
+        <td><span style="color:#22c55e;">&#10003;</span></td>
+        <td><span style="color:#94a3b8;">&#9675;</span></td>
+        <td><span style="color:#94a3b8;">&#9675;</span></td>
+      {% elif stage == "indexing" %}
+        <td><span style="color:#22c55e;">&#10003;</span></td>
+        <td><span style="color:#22c55e;">&#10003;</span></td>
+        <td><span style="color:#3b82f6;">&#9203;</span></td>
+        <td><span style="color:#94a3b8;">&#9675;</span></td>
+      {% elif stage == "done" %}
+        <td><span style="color:#22c55e;">&#10003;</span></td>
+        <td><span style="color:#22c55e;">&#10003;</span></td>
+        <td><span style="color:#22c55e;">&#10003;</span></td>
+        <td><span style="color:#22c55e;">&#10003;</span></td>
+      {% else %}
+        <td><span style="color:#94a3b8;">&#9675;</span></td>
+        <td><span style="color:#94a3b8;">&#9675;</span></td>
+        <td><span style="color:#94a3b8;">&#9675;</span></td>
+        <td><span style="color:#94a3b8;">&#9675;</span></td>
+      {% endif %}
+      <td style="font-size:0.85em; color:#64748b;">{{ s.get("updated_at", "")[:16] }}</td>
     </tr>
     {% endfor %}
   </table>
   {% else %}
-  <p style="color: #64748b; font-size: 0.9em;">No recent activity</p>
+  <p style="color: #64748b; font-size: 0.9em;">No documents in pipeline</p>
   {% endif %}
 </div>
 {% endblock %}

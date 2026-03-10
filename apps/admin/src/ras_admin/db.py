@@ -28,23 +28,6 @@ def get_dashboard_stats(conn: psycopg.Connection) -> dict[str, Any]:
     return {"total_docs": total_docs, "total_chunks": total_chunks, "total_figures": total_figures}
 
 
-def get_recent_activity(conn: psycopg.Connection, limit: int = 10) -> list[dict[str, Any]]:
-    """Get recent chunk_changes with document info."""
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            SELECT cc.doc_id, d.source_filename, d.title, cc.version, cc.indexed_at,
-                   cc.chunks_total, cc.chunks_added, cc.chunks_removed, cc.chunks_text_changed, cc.chunks_unchanged
-            FROM chunk_changes cc
-            LEFT JOIN documents d ON cc.doc_id = d.doc_id
-            ORDER BY cc.indexed_at DESC
-            LIMIT %s
-            """,
-            (limit,),
-        )
-        cols = [desc[0] for desc in cur.description]
-        return [dict(zip(cols, row)) for row in cur.fetchall()]
-
 
 def get_all_documents(conn: psycopg.Connection) -> list[dict[str, Any]]:
     """Get all documents with chunk counts."""

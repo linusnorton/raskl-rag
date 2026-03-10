@@ -79,13 +79,13 @@ async def dashboard(request: Request):
     conn = db.get_connection(config)
     try:
         stats = db.get_dashboard_stats(conn)
-        recent = db.get_recent_activity(conn)
     finally:
         conn.close()
 
     # Pipeline status counts (fixed order, all stages shown)
     pipeline_stages = ["uploaded", "processing", "processed", "indexing", "done", "error"]
     stage_counts = {stage: 0 for stage in pipeline_stages}
+    statuses = []
     if config.s3_bucket:
         s3_client = s3.get_client()
         statuses = s3.get_all_statuses(s3_client, config.s3_bucket)
@@ -102,8 +102,8 @@ async def dashboard(request: Request):
             "request": request,
             "user": user,
             "stats": stats,
-            "recent": recent,
             "stage_counts": stage_counts,
+            "statuses": sorted(statuses, key=lambda s: s.get("filename", "")),
         },
     )
 
