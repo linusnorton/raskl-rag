@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% set active_page = "dashboard" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<h1 style="font-size: 1.3em; margin-bottom: 20px;">Dashboard</h1>
+
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="label">Documents</div>
+    <div class="value">{{ stats.total_docs }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Chunks</div>
+    <div class="value">{{ stats.total_chunks }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Figures</div>
+    <div class="value">{{ stats.total_figures }}</div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Pipeline Status</h2>
+  <p style="font-size:0.85em; color:#64748b; margin-bottom:12px;">
+    uploaded &rarr; processing &rarr; processed &rarr; indexing &rarr; done
+  </p>
+  <div class="stats-grid" style="grid-template-columns: repeat(6, 1fr);">
+    {% set stage_styles = {
+      'uploaded': ('badge-gray', 'Waiting for docproc'),
+      'processing': ('badge-blue', 'Docproc running (OCR)'),
+      'processed': ('badge-yellow', 'Docproc done, waiting for indexer'),
+      'indexing': ('badge-blue', 'Indexer running (embed + DB)'),
+      'done': ('badge-green', 'Fully indexed and searchable'),
+      'error': ('badge-red', 'Failed — check error details')
+    } %}
+    {% for stage, count in stage_counts.items() %}
+    <div class="stat-card" title="{{ stage_styles.get(stage, ('', ''))[1] }}">
+      <div class="label">{{ stage }}</div>
+      <div class="value">
+        {% if count > 0 %}
+        <a href="/admin/pipeline?stage={{ stage }}" style="color:inherit; text-decoration:none; border-bottom: 2px dashed #cbd5e1;">{{ count }}</a>
+        {% else %}
+        {{ count }}
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="card">
+  <h2>Recent Activity</h2>
+  {% if recent %}
+  <table>
+    <tr><th>Document</th><th>Version</th><th>Added</th><th>Removed</th><th>Changed</th><th>Unchanged</th><th>Total</th><th>Indexed</th></tr>
+    {% for r in recent %}
+    <tr>
+      <td><a href="/admin/documents/{{ r.doc_id }}" class="truncate" style="display:block;">{{ r.source_filename or r.doc_id[:12] }}</a></td>
+      <td>v{{ r.version }}</td>
+      <td>{{ r.chunks_added }}</td>
+      <td>{{ r.chunks_removed }}</td>
+      <td>{{ r.chunks_text_changed }}</td>
+      <td>{{ r.chunks_unchanged }}</td>
+      <td>{{ r.chunks_total }}</td>
+      <td>{{ r.indexed_at.strftime('%Y-%m-%d %H:%M') if r.indexed_at else "" }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p style="color: #64748b; font-size: 0.9em;">No recent activity</p>
+  {% endif %}
+</div>
+{% endblock %}

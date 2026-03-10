@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% set active_page = "dashboard" %}
+{% block title %}Pipeline — {{ stage or 'All' }}{% endblock %}
+{% block content %}
+<div style="display: flex; align-items: center; gap: 12px; margin-bottom: 20px;">
+  <a href="/admin/" style="color: #64748b;">&larr; Dashboard</a>
+  <h1 style="font-size: 1.3em; flex:1;">
+    Pipeline: {{ stage or 'All Stages' }}
+    <span class="badge badge-gray" style="font-size:0.6em; vertical-align:middle;">{{ statuses|length }}</span>
+  </h1>
+  {% if stage %}
+  <a href="/admin/pipeline" class="btn btn-secondary">Show All</a>
+  {% endif %}
+</div>
+
+{% set stage_descriptions = {
+  'uploaded': 'PDF uploaded to S3, waiting for docproc Lambda to pick it up.',
+  'processing': 'Docproc Lambda is running OCR (Qwen3 VL) on the PDF.',
+  'processed': 'Docproc finished, JSONL written to S3. Waiting for chunker/indexer Lambda.',
+  'indexing': 'Chunker Lambda is embedding chunks and inserting into PostgreSQL.',
+  'done': 'Fully processed and indexed. Document is searchable.',
+  'error': 'Pipeline failed. Check the error column for details.'
+} %}
+
+{% if stage and stage in stage_descriptions %}
+<div class="msg msg-info" style="margin-bottom:16px;">{{ stage_descriptions[stage] }}</div>
+{% endif %}
+
+<div style="display:flex; gap:6px; margin-bottom:16px; flex-wrap:wrap;">
+  {% set stages = ['uploaded', 'processing', 'processed', 'indexing', 'done', 'error'] %}
+  {% for s in stages %}
+  <a href="/admin/pipeline?stage={{ s }}" class="btn {% if s == stage %}btn-primary{% else %}btn-secondary{% endif %}" style="font-size:0.85em;">{{ s }}</a>
+  {% endfor %}
+</div>
+
+<div class="card">
+  {% if statuses %}
+  <table>
+    <tr>
+      <th>Filename</th>
+      <th>Stage</th>
+      <th>Updated</th>
+      {% if stage == 'error' or not stage %}<th>Error</th>{% endif %}
+    </tr>
+    {% for s in statuses %}
+    <tr>
+      <td class="truncate" title="{{ s.filename }}" style="max-width:400px;">{{ s.filename }}</td>
+      <td>
+        {% set badge_map = {'uploaded':'badge-gray','processing':'badge-blue','processed':'badge-yellow','indexing':'badge-blue','done':'badge-green','error':'badge-red'} %}
+        <span class="badge {{ badge_map.get(s.stage, 'badge-gray') }}">{{ s.stage }}</span>
+      </td>
+      <td>{{ s.updated_at[:19].replace('T', ' ') if s.updated_at else "-" }}</td>
+      {% if stage == 'error' or not stage %}
+      <td style="color:#991b1b; font-size:0.85em;">{{ s.error or "" }}</td>
+      {% endif %}
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p style="color: #64748b; font-size: 0.9em;">No documents in this stage.</p>
+  {% endif %}
+</div>
+{% endblock %}

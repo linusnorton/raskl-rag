@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% set active_page = "documents" %}
+{% block title %}Diff — {{ doc.source_filename }}{% endblock %}
+{% block content %}
+<div style="display: flex; align-items: center; gap: 12px; margin-bottom: 20px;">
+  <a href="/admin/documents/{{ doc.doc_id }}" style="color: #64748b;">&larr; {{ doc.source_filename }}</a>
+  <h1 style="font-size: 1.3em; flex:1;">Version Diff</h1>
+</div>
+
+<div class="card">
+  <div style="display:flex; gap:12px; align-items:center; margin-bottom:16px;">
+    <select id="diffV1" style="width:auto;">
+      {% for v in versions %}
+      <option value="{{ v.version }}" {% if v.version == v1 %}selected{% endif %}>v{{ v.version }}</option>
+      {% endfor %}
+    </select>
+    <span>vs</span>
+    <select id="diffV2" style="width:auto;">
+      {% for v in versions %}
+      <option value="{{ v.version }}" {% if v.version == v2 %}selected{% endif %}>v{{ v.version }}</option>
+      {% endfor %}
+    </select>
+    <button class="btn btn-primary" onclick="loadDiff()">Compare</button>
+  </div>
+  <div id="diffResult">
+    <p style="color:#64748b;">Select versions and click Compare.</p>
+  </div>
+</div>
+
+<script>
+const DOC_ID = "{{ doc.doc_id }}";
+
+async function loadDiff() {
+  const v1 = document.getElementById('diffV1').value;
+  const v2 = document.getElementById('diffV2').value;
+  const container = document.getElementById('diffResult');
+  container.innerHTML = '<p style="color:#64748b;">Loading diff...</p>';
+
+  const resp = await fetch(`/admin/api/diff/${DOC_ID}?v1=${v1}&v2=${v2}`);
+  const data = await resp.json();
+
+  if (!data.file_diffs || data.file_diffs.length === 0) {
+    container.innerHTML = '<p style="color:#64748b;">No changes between these versions.</p>';
+    return;
+  }
+
+  let html = `<p style="margin-bottom:16px; font-size:0.9em;">${data.file_diffs.length} file(s) changed</p>`;
+
+  for (const fd of data.file_diffs) {
+    html += `<div class="diff-block">
+      <div class="diff-header" style="display:flex; align-items:center; gap:12px;">
+        <span style="flex:1;">${fd.filename}</span>
+        <span class="badge badge-green">+${fd.added}</span>
+        <span class="badge badge-red">-${fd.removed}</span>
+      </div>
+      <div class="diff-content"><pre>${colorDiff(fd.diff)}</pre></div>
+    </div>`;
+  }
+
+  container.innerHTML = html;
+
+  // Update URL without reload
+  const url = new URL(window.location);
+  url.searchParams.set('v1', v1);
+  url.searchParams.set('v2', v2);
+  history.replaceState(null, '', url);
+}
+
+function colorDiff(text) {
+  return text.split('\n').map(line => {
+    const escaped = line.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    if (line.startsWith('+')) return `<span class="diff-line-add">${escaped}</span>`;
+    if (line.startsWith('-')) return `<span class="diff-line-remove">${escaped}</span>`;
+    if (line.startsWith('@')) return `<span class="diff-line-header">${escaped}</span>`;
+    return escaped;
+  }).join('\n');
+}
+
+// Auto-load if versions are in URL
+{% if v1 and v2 %}
+document.addEventListener('DOMContentLoaded', loadDiff);
+{% endif %}
+</script>
+{% endblock %}

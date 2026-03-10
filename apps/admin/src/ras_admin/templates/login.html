@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Login{% endblock %}
+{% block content %}
+<div style="max-width: 400px; margin: 80px auto;">
+  <div class="card">
+    <h2>SwetBot Admin Login</h2>
+    <p style="font-size: 0.85em; color: #64748b; margin-bottom: 16px;">Sign in with your Open WebUI credentials</p>
+    {% if error %}
+    <div class="msg msg-err">{{ error }}</div>
+    {% endif %}
+    <form method="POST" action="/admin/login">
+      <div style="margin-bottom: 12px;">
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" required autofocus>
+      </div>
+      <div style="margin-bottom: 16px;">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required>
+      </div>
+      <button type="submit" class="btn btn-primary" style="width: 100%;">Sign In</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

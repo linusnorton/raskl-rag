@@ -74,6 +74,19 @@ variable "chunker_image_tag" {
   default     = "latest"
 }
 
+variable "admin_image_tag" {
+  description = "Docker image tag for admin Lambda"
+  type        = string
+  default     = "latest"
+}
+
+variable "admin_secret_key" {
+  description = "JWT signing key for admin sessions"
+  type        = string
+  sensitive   = true
+  default     = "change-me-in-production"
+}
+
 # --- GitHub Actions OIDC ---
 
 variable "github_org" {

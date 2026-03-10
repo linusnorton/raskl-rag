@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% set active_page = "upload" %}
+{% block title %}Upload{% endblock %}
+{% block content %}
+<h1 style="font-size: 1.3em; margin-bottom: 20px;">Upload PDFs</h1>
+
+<div class="card">
+  <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+    <input type="file" id="fileInput" accept=".pdf" multiple>
+    <p style="font-size: 1.1em; margin-bottom: 8px;">Drop PDF files here or click to browse</p>
+    <p style="font-size: 0.85em;">Max 500 MB per file</p>
+  </div>
+  <div style="margin-top: 16px; display: flex; gap: 8px;">
+    <button class="btn btn-primary" id="uploadBtn" onclick="uploadFiles()">Upload</button>
+    <button class="btn btn-danger" onclick="reprocessAll()">Reprocess All</button>
+  </div>
+</div>
+
+<div id="message"></div>
+<div id="progress"></div>
+
+<script>
+const STAGES = ["uploaded", "processing", "processed", "indexing", "done"];
+const STAGE_INDEX = {uploaded: 0, processing: 1, processed: 2, indexing: 3, done: 4};
+let pollTimer = null;
+let trackedFiles = new Set();
+
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  fileInput.files = e.dataTransfer.files;
+});
+
+function showMsg(text, cls) {
+  document.getElementById('message').innerHTML = `<div class="msg msg-${cls}">${text}</div>`;
+}
+
+async function uploadFiles() {
+  const files = fileInput.files;
+  if (!files.length) { showMsg('Please select at least one PDF.', 'err'); return; }
+
+  const btn = document.getElementById('uploadBtn');
+  btn.disabled = true;
+  document.getElementById('message').innerHTML = '';
+
+  let uploaded = 0;
+  let errors = [];
+  const MAX_SIZE = 500 * 1024 * 1024;
+
+  for (const file of files) {
+    if (!file.name.toLowerCase().endsWith('.pdf')) { errors.push(`${file.name}: not a PDF`); continue; }
+    if (file.size > MAX_SIZE) { errors.push(`${file.name}: exceeds 500 MB`); continue; }
+    try {
+      const resp = await fetch('/admin/api/upload/presign', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({filename: file.name})
+      });
+      const data = await resp.json();
+      if (!resp.ok) { errors.push(`${file.name}: ${data.error}`); continue; }
+
+      const putResp = await fetch(data.upload_url, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/pdf'},
+        body: file
+      });
+      if (!putResp.ok) { errors.push(`${file.name}: S3 upload failed`); continue; }
+
+      trackedFiles.add(file.name);
+      uploaded++;
+    } catch (e) {
+      errors.push(`${file.name}: ${e.message}`);
+    }
+  }
+
+  btn.disabled = false;
+
+  if (errors.length) {
+    showMsg(`Uploaded ${uploaded} file(s). Errors: ${errors.join('; ')}`, uploaded > 0 ? 'info' : 'err');
+  } else {
+    showMsg(`Uploaded ${uploaded} file(s). Processing will begin automatically.`, 'ok');
+  }
+
+  if (uploaded > 0) startPolling();
+}
+
+async function reprocessAll() {
+  document.getElementById('message').innerHTML = '';
+  try {
+    const resp = await fetch('/admin/api/upload/reprocess-all', {method: 'POST'});
+    const data = await resp.json();
+    if (!resp.ok) { showMsg(data.error || 'Failed', 'err'); return; }
+    const filenames = data.filenames || [];
+    filenames.forEach(f => trackedFiles.add(f));
+    showMsg(`Reprocessing triggered for ${filenames.length} PDFs.`, 'ok');
+    if (filenames.length > 0) startPolling();
+  } catch (e) {
+    showMsg(`Error: ${e.message}`, 'err');
+  }
+}
+
+function startPolling() {
+  if (pollTimer) return;
+  renderProgress({});
+  pollTimer = setInterval(pollStatus, 5000);
+  pollStatus();
+}
+
+async function pollStatus() {
+  try {
+    const resp = await fetch('/admin/api/upload/status');
+    if (!resp.ok) return;
+    const statuses = await resp.json();
+    const statusMap = {};
+    for (const s of statuses) statusMap[s.filename] = s;
+    renderProgress(statusMap);
+
+    const terminal = new Set(['done', 'error']);
+    const allDone = [...trackedFiles].every(f => {
+      const s = statusMap[f];
+      return s && terminal.has(s.stage);
+    });
+    if (allDone && trackedFiles.size > 0) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+  } catch (e) {}
+}
+
+function renderProgress(statusMap) {
+  if (trackedFiles.size === 0) return;
+  let html = '<div class="card"><h2>Progress</h2><table><tr><th>File</th><th>Upload</th><th>DocProc</th><th>Indexing</th><th>Done</th></tr>';
+
+  for (const filename of trackedFiles) {
+    const status = statusMap[filename];
+    const stage = status ? status.stage : 'uploaded';
+    const isError = stage === 'error';
+    const stageIdx = isError ? -1 : (STAGE_INDEX[stage] || 0);
+
+    html += `<tr><td class="truncate" title="${filename}">${filename}</td>`;
+
+    if (isError) {
+      html += `<td class="stage-done">&#10003;</td>`;
+      html += `<td class="stage-error" colspan="3">&#10007; ${status.error || 'Error'}</td>`;
+    } else {
+      html += stageIdx >= 0 ? '<td class="stage-done">&#10003;</td>' : '<td class="stage-pending">&#9675;</td>';
+      html += stageIdx >= 3 ? '<td class="stage-done">&#10003;</td>' : stageIdx >= 1 ? '<td class="stage-active">&#8987;</td>' : '<td class="stage-pending">&#9675;</td>';
+      html += stageIdx >= 4 ? '<td class="stage-done">&#10003;</td>' : stageIdx >= 3 ? '<td class="stage-active">&#8987;</td>' : '<td class="stage-pending">&#9675;</td>';
+      html += stageIdx >= 4 ? '<td class="stage-done">&#10003;</td>' : '<td class="stage-pending">&#9675;</td>';
+    }
+    html += '</tr>';
+  }
+  html += '</table></div>';
+  document.getElementById('progress').innerHTML = html;
+}
+</script>
+{% endblock %}

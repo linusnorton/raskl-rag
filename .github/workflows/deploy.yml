@@ -19,7 +19,7 @@ jobs:
       api: ${{ steps.filter.outputs.api }}
       docproc: ${{ steps.filter.outputs.docproc }}
       chunker: ${{ steps.filter.outputs.chunker }}
-      upload: ${{ steps.filter.outputs.upload }}
+      admin: ${{ steps.filter.outputs.admin }}
       infra: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.infra }}
       open_webui: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.open_webui }}
     steps:
@@ -46,8 +46,11 @@ jobs:
               - 'apps/chunker_indexer/Dockerfile'
               - 'pyproject.toml'
               - 'uv.lock'
-            upload:
-              - 'apps/upload/**'
+            admin:
+              - 'apps/admin/**'
+              - 'apps/admin/Dockerfile'
+              - 'pyproject.toml'
+              - 'uv.lock'
             infra:
               - 'infra/**'
             open_webui:
@@ -161,6 +164,38 @@ jobs:
           docker build -f apps/chunker_indexer/Dockerfile -t "$IMAGE" .
           docker push "$IMAGE"
 
+  build-admin:
+    needs: changes
+    if: always() && needs.changes.outputs.admin == 'true' && !failure() && !cancelled()
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set image metadata
+        id: meta
+        run: echo "sha=${GITHUB_SHA::8}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push admin image
+        run: |
+          aws ecr describe-repositories --repository-names raskl-admin 2>/dev/null || \
+            aws ecr create-repository --repository-name raskl-admin --image-tag-mutability MUTABLE
+
+          IMAGE="${{ steps.ecr-login.outputs.registry }}/raskl-admin:${{ steps.meta.outputs.sha }}"
+          docker build -f apps/admin/Dockerfile -t "$IMAGE" .
+          docker push "$IMAGE"
+
   mirror-open-webui:
     needs: changes
     if: always() && !failure() && !cancelled()
@@ -204,7 +239,7 @@ jobs:
           fi
 
   deploy:
-    needs: [changes, build-api, build-docproc, build-chunker, mirror-open-webui]
+    needs: [changes, build-api, build-docproc, build-chunker, build-admin, mirror-open-webui]
     if: always() && !failure() && !cancelled()
     runs-on: ubuntu-latest
     environment:
@@ -236,12 +271,14 @@ jobs:
           terraform import \
             -var="neon_api_key=${{ secrets.NEON_API_KEY }}" \
             -var="upload_password_hash=${{ secrets.UPLOAD_PASSWORD_HASH }}" \
+            -var="admin_secret_key=${{ secrets.ADMIN_SECRET_KEY }}" \
             -var="rag_api_key=${{ secrets.CHAT_API_KEY }}" \
             aws_ecr_repository.chunker raskl-chunker 2>/dev/null || true
 
           terraform import \
             -var="neon_api_key=${{ secrets.NEON_API_KEY }}" \
             -var="upload_password_hash=${{ secrets.UPLOAD_PASSWORD_HASH }}" \
+            -var="admin_secret_key=${{ secrets.ADMIN_SECRET_KEY }}" \
             -var="rag_api_key=${{ secrets.CHAT_API_KEY }}" \
             aws_ecr_repository.rag_api raskl-rag-api 2>/dev/null || true
 
@@ -262,8 +299,10 @@ jobs:
             -var="rag_api_image_tag=${{ needs.build-api.outputs.image_tag || 'latest' }}" \
             -var="docproc_image_tag=${{ needs.build-docproc.outputs.image_tag || 'latest' }}" \
             -var="chunker_image_tag=${{ needs.build-chunker.outputs.image_tag || 'latest' }}" \
+            -var="admin_image_tag=${{ needs.build-admin.outputs.image_tag || 'latest' }}" \
             -var="neon_api_key=${{ secrets.NEON_API_KEY }}" \
             -var="upload_password_hash=${{ secrets.UPLOAD_PASSWORD_HASH }}" \
+            -var="admin_secret_key=${{ secrets.ADMIN_SECRET_KEY }}" \
             -var="rag_api_key=${{ secrets.CHAT_API_KEY }}" \
             -out=tfplan
 
@@ -298,13 +337,15 @@ jobs:
               --image-uri "${CHUNKER_REPO}:${{ needs.build-chunker.outputs.image_tag }}"
           fi
 
-      - name: Update upload Lambda
-        if: needs.changes.outputs.upload == 'true'
+      - name: Update admin Lambda
+        if: needs.changes.outputs.admin == 'true'
         run: |
-          cd apps/upload && zip -r /tmp/upload.zip handler.py template.html
-          aws lambda update-function-code \
-            --function-name raskl-upload \
-            --zip-file fileb:///tmp/upload.zip
+          if [ -n "${{ needs.build-admin.outputs.image_tag }}" ]; then
+            ADMIN_REPO=$(aws ecr describe-repositories --repository-names raskl-admin --query 'repositories[0].repositoryUri' --output text)
+            aws lambda update-function-code \
+              --function-name raskl-admin \
+              --image-uri "${ADMIN_REPO}:${{ needs.build-admin.outputs.image_tag }}"
+          fi
 
       - name: Get deployment URLs
         id: urls

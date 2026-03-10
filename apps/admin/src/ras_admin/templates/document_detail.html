@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+{% set active_page = "documents" %}
+{% block title %}{{ doc.source_filename }}{% endblock %}
+{% block content %}
+<div style="display: flex; align-items: center; gap: 12px; margin-bottom: 20px;">
+  <a href="/admin/documents" style="color: #64748b;">&larr; Documents</a>
+  <h1 style="font-size: 1.3em; flex:1;">{{ doc.source_filename }}</h1>
+  <button class="btn btn-primary" onclick="reprocess()">Reprocess</button>
+  <button class="btn btn-secondary" onclick="reindex()">Reindex</button>
+  <button class="btn btn-danger" onclick="deleteDoc()">Delete</button>
+</div>
+
+<div id="actionMsg"></div>
+
+<div class="card">
+  <h2>Latest Metadata</h2>
+  <table class="meta-table">
+    <tr><td>Doc ID</td><td class="mono">{{ doc.doc_id }}</td></tr>
+    <tr><td>Title</td><td>{{ doc.title or "-" }}</td></tr>
+    <tr><td>Author</td><td>{{ doc.author or "-" }}</td></tr>
+    <tr><td>Year</td><td>{{ doc.year or "-" }}</td></tr>
+    <tr><td>Publication</td><td>{{ doc.publication or "-" }}</td></tr>
+    <tr><td>Type</td><td>{{ doc.document_type or "-" }}</td></tr>
+    <tr><td>Page Offset</td><td>{{ doc.page_offset }}</td></tr>
+    <tr><td>SHA256</td><td class="mono" style="font-size:0.75em;word-break:break-all;">{{ doc.sha256_pdf }}</td></tr>
+    <tr><td>Indexed</td><td>{{ doc.indexed_at.strftime('%Y-%m-%d %H:%M:%S') if doc.indexed_at else "-" }}</td></tr>
+  </table>
+</div>
+
+<div class="card">
+  <h2>Version History</h2>
+  {% if changes %}
+  <table>
+    <tr><th>Version</th><th>Added</th><th>Removed</th><th>Changed</th><th>Unchanged</th><th>Total</th><th>Date</th><th></th></tr>
+    {% for c in changes %}
+    <tr>
+      <td>v{{ c.version }}</td>
+      <td>{% if c.chunks_added %}<span class="badge badge-green">+{{ c.chunks_added }}</span>{% else %}0{% endif %}</td>
+      <td>{% if c.chunks_removed %}<span class="badge badge-red">-{{ c.chunks_removed }}</span>{% else %}0{% endif %}</td>
+      <td>{% if c.chunks_text_changed %}<span class="badge badge-yellow">~{{ c.chunks_text_changed }}</span>{% else %}0{% endif %}</td>
+      <td>{{ c.chunks_unchanged }}</td>
+      <td>{{ c.chunks_total }}</td>
+      <td>{{ c.indexed_at.strftime('%Y-%m-%d %H:%M') if c.indexed_at else "" }}</td>
+      <td>
+        {% if not loop.last %}
+        <a class="btn btn-secondary" style="padding:4px 10px; font-size:0.8em;" href="/admin/diff/{{ doc.doc_id }}?v1={{ changes[loop.index].version }}&v2={{ c.version }}">Diff</a>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p style="color: #64748b; font-size: 0.9em;">No version history</p>
+  {% endif %}
+</div>
+
+{% if figures %}
+<div class="card">
+  <h2>Figures ({{ figures|length }})</h2>
+  <div class="figure-gallery">
+    {% for fig in figures %}
+    <div class="figure-card">
+      {% if fig.thumb_path %}
+      <a href="/admin/api/images/{{ doc.doc_id }}/{{ fig.asset_path }}" target="_blank">
+        <img src="/admin/api/images/{{ doc.doc_id }}/{{ fig.thumb_path }}" alt="Page {{ fig.page_num }}" style="height:120px; width:100%; object-fit:cover;">
+      </a>
+      {% elif fig.asset_path %}
+      <a href="/admin/api/images/{{ doc.doc_id }}/{{ fig.asset_path }}" target="_blank">
+        <img src="/admin/api/images/{{ doc.doc_id }}/{{ fig.asset_path }}" alt="Page {{ fig.page_num }}" style="height:120px; width:100%; object-fit:cover;">
+      </a>
+      {% else %}
+      <div style="height:120px; background:#f1f5f9; display:flex; align-items:center; justify-content:center; color:#94a3b8; font-size:0.8em;">
+        Page {{ fig.page_num }}
+      </div>
+      {% endif %}
+      <div class="caption">{{ fig.caption or "No caption" }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>JSONL Viewer</h2>
+  <div style="display:flex; gap:4px; margin-bottom:12px; flex-wrap:wrap;" id="jsonlTabs">
+    {% set jsonl_files = ['documents.jsonl', 'text_blocks.jsonl', 'pages.jsonl', 'footnotes.jsonl', 'footnote_refs.jsonl', 'figures.jsonl', 'removed_blocks.jsonl', 'plates.jsonl'] %}
+    {% for f in jsonl_files %}
+    <button class="btn {% if loop.first %}btn-primary{% else %}btn-secondary{% endif %}" onclick="loadJsonlTab('{{ f }}', this)" data-filename="{{ f }}">{{ f }}</button>
+    {% endfor %}
+  </div>
+  <div id="jsonlNav" style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+    <button class="btn btn-secondary" style="padding:4px 12px;" onclick="jsonlPrev()" id="jsonlPrevBtn" disabled>&larr; Prev</button>
+    <span id="jsonlCounter" style="font-size:0.9em; color:#64748b;">-</span>
+    <button class="btn btn-secondary" style="padding:4px 12px;" onclick="jsonlNext()" id="jsonlNextBtn" disabled>Next &rarr;</button>
+    <span style="color:#94a3b8;">|</span>
+    <span style="font-size:0.85em; color:#64748b;">Go to</span>
+    <input type="number" id="jsonlGoTo" min="1" style="width:70px; padding:4px 8px; font-size:0.85em;" onkeydown="if(event.key==='Enter')jsonlGoToPage()">
+    <button class="btn btn-secondary" style="padding:4px 10px; font-size:0.8em;" onclick="jsonlGoToPage()">Go</button>
+  </div>
+  <div id="jsonlContent" style="min-height:400px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:16px; font-family:'SF Mono','Cascadia Code','Fira Code',monospace; font-size:0.82em; overflow:auto; white-space:pre-wrap; word-break:break-word;">
+    Select a tab to view JSONL records.
+  </div>
+</div>
+
+<script>
+const DOC_ID = "{{ doc.doc_id }}";
+
+async function apiCall(url, method='POST') {
+  const resp = await fetch(url, {method});
+  const data = await resp.json();
+  const msg = document.getElementById('actionMsg');
+  if (resp.ok) {
+    msg.innerHTML = `<div class="msg msg-ok">${data.message}</div>`;
+  } else {
+    msg.innerHTML = `<div class="msg msg-err">${data.error || 'Failed'}</div>`;
+  }
+}
+
+function reprocess() { apiCall(`/admin/api/documents/${DOC_ID}/reprocess`); }
+function reindex() { apiCall(`/admin/api/documents/${DOC_ID}/reindex`); }
+function deleteDoc() {
+  if (!confirm('Delete this document? This cannot be undone.')) return;
+  apiCall(`/admin/api/documents/${DOC_ID}`, 'DELETE').then(() => {
+    setTimeout(() => window.location = '/admin/documents', 1000);
+  });
+}
+
+// --- JSONL Tabbed Viewer ---
+
+let jsonlRecords = [];
+let jsonlIndex = 0;
+
+async function loadJsonlTab(filename, btn) {
+  document.querySelectorAll('#jsonlTabs button').forEach(b => {
+    b.className = 'btn btn-secondary';
+  });
+  btn.className = 'btn btn-primary';
+
+  const content = document.getElementById('jsonlContent');
+  content.textContent = 'Loading...';
+  jsonlRecords = [];
+  jsonlIndex = 0;
+  updateJsonlNav();
+
+  const resp = await fetch(`/admin/api/documents/${DOC_ID}/jsonl/${filename}`);
+  if (!resp.ok) {
+    content.textContent = 'File not found or empty.';
+    return;
+  }
+  jsonlRecords = await resp.json();
+  jsonlIndex = 0;
+  renderJsonlRecord();
+}
+
+function renderJsonlRecord() {
+  const content = document.getElementById('jsonlContent');
+  if (jsonlRecords.length === 0) {
+    content.textContent = 'No records.';
+    updateJsonlNav();
+    return;
+  }
+  content.textContent = JSON.stringify(jsonlRecords[jsonlIndex], null, 2);
+  updateJsonlNav();
+}
+
+function updateJsonlNav() {
+  const counter = document.getElementById('jsonlCounter');
+  const prevBtn = document.getElementById('jsonlPrevBtn');
+  const nextBtn = document.getElementById('jsonlNextBtn');
+  const goTo = document.getElementById('jsonlGoTo');
+  if (jsonlRecords.length === 0) {
+    counter.textContent = '-';
+    prevBtn.disabled = true;
+    nextBtn.disabled = true;
+    goTo.max = 1;
+    goTo.value = '';
+  } else {
+    counter.textContent = `${jsonlIndex + 1} of ${jsonlRecords.length}`;
+    prevBtn.disabled = jsonlIndex === 0;
+    nextBtn.disabled = jsonlIndex >= jsonlRecords.length - 1;
+    goTo.max = jsonlRecords.length;
+    goTo.placeholder = jsonlIndex + 1;
+  }
+}
+
+function jsonlPrev() {
+  if (jsonlIndex > 0) { jsonlIndex--; renderJsonlRecord(); }
+}
+function jsonlNext() {
+  if (jsonlIndex < jsonlRecords.length - 1) { jsonlIndex++; renderJsonlRecord(); }
+}
+function jsonlGoToPage() {
+  const input = document.getElementById('jsonlGoTo');
+  const page = parseInt(input.value, 10);
+  if (isNaN(page) || page < 1 || page > jsonlRecords.length) return;
+  jsonlIndex = page - 1;
+  input.value = '';
+  renderJsonlRecord();
+}
+
+// Auto-load first tab
+document.addEventListener('DOMContentLoaded', () => {
+  const firstTab = document.querySelector('#jsonlTabs button');
+  if (firstTab) loadJsonlTab(firstTab.dataset.filename, firstTab);
+});
+</script>
+{% endblock %}
