@@ -268,13 +268,17 @@ def extract_with_qwen3vl(config: PipelineConfig, doc_id: str) -> dict[int, list[
         pages_to_process.append(page_num)
 
     # Render all pages sequentially (PyMuPDF segfaults with some PDFs under concurrent access)
+    t0 = time.time()
     rendered: dict[int, tuple[bytes, float, float]] = {}
     for page_num in pages_to_process:
         img_bytes, page_width, page_height = _render_page_to_image_bytes(pdf_path, page_num - 1, config.qwen3vl_dpi)
         rendered[page_num] = (img_bytes, page_width, page_height)
         logger.debug("Qwen3 VL: page %d rendered (%d bytes)", page_num, len(img_bytes))
+    render_time = time.time() - t0
+    logger.info("Qwen3 VL: rendered %d pages in %.1fs", len(rendered), render_time)
 
     # Parallelize Bedrock API calls (I/O-bound)
+    t0 = time.time()
     blocks_by_page: dict[int, list[TextBlockRecord]] = {}
 
     with ThreadPoolExecutor(max_workers=config.qwen3vl_max_workers) as executor:
@@ -294,6 +298,8 @@ def extract_with_qwen3vl(config: PipelineConfig, doc_id: str) -> dict[int, list[
                 logger.info("Qwen3 VL: page %d → %d blocks", pn, len(blocks))
             except Exception:
                 logger.exception("Qwen3 VL: failed on page %d", page_num)
+    bedrock_time = time.time() - t0
+    logger.info("Qwen3 VL: Bedrock calls for %d pages in %.1fs (max_workers=%d)", len(pages_to_process), bedrock_time, config.qwen3vl_max_workers)
 
     total_blocks = sum(len(v) for v in blocks_by_page.values())
     logger.info("Qwen3 VL extracted %d blocks across %d pages", total_blocks, len(blocks_by_page))

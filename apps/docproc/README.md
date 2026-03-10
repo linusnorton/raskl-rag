@@ -63,10 +63,18 @@ and writes an augmented version forward. The final stage writes JSONL files to d
 ### D1 — Extraction via Qwen3 VL (Bedrock)
 
 **What we chose:** A single extraction backend using the Qwen3-VL-235B vision-language model via
-AWS Bedrock's Converse API. Each page is rendered as a PNG at 300 DPI, sent to the model, and
-the response is parsed into structured text blocks. Pages are processed in parallel (default 10
-workers). Since Qwen3 VL returns Markdown text without spatial coordinates, blocks are assigned
-full-page degenerate bounding boxes.
+AWS Bedrock's Converse API. Each page is rendered as a JPEG at 300 DPI, sent to the model, and
+the response is parsed into structured text blocks. Page rendering is sequential (PyMuPDF
+segfaults under concurrent access), then Bedrock API calls are parallelized via
+ThreadPoolExecutor (default 50 workers). Timing instrumentation logs the render and Bedrock
+phases separately to aid tuning. Since Qwen3 VL returns Markdown text without spatial
+coordinates, blocks are assigned full-page degenerate bounding boxes.
+
+**Why 50 workers:** Bedrock's Qwen3 VL quota is 10,000 RPM. Even at 5 concurrent Lambdas × 50
+workers = 250 concurrent requests, that's only 2.5% of the limit. Increasing from 20 to 50
+workers reduces batching for large PDFs (e.g. 151-page Perak: ~8 batches → ~3 batches) without
+throttling risk. For small PDFs (≤20 pages), all pages already fit in one batch so there's no
+change.
 
 **Why a single backend:** Earlier versions supported Docling (for clean PDFs) and DeepSeek-OCR
 (for messy scans via local vLLM). In practice, Qwen3 VL handles both clean and messy PDFs well
@@ -261,7 +269,7 @@ All variables use the `DOCPROC_` prefix. The most commonly needed ones:
 | `DOCPROC_BEDROCK_OCR_MODEL_ID` | `qwen.qwen3-vl-235b-a22b` | Bedrock model ID (Qwen3 VL backend only) |
 | `DOCPROC_QWEN3VL_DPI` | `300` | Page rendering DPI (Qwen3 VL backend only) |
 | `DOCPROC_QWEN3VL_MAX_TOKENS` | `4096` | Max tokens per page (Qwen3 VL backend only) |
-| `DOCPROC_QWEN3VL_MAX_WORKERS` | `10` | Max parallel Bedrock calls (Qwen3 VL backend only) |
+| `DOCPROC_QWEN3VL_MAX_WORKERS` | `50` | Max parallel Bedrock calls (Qwen3 VL backend only) |
 | `NOTIFY_EMAIL` | — | Recipient email for SES diff notifications (Lambda only) |
 | `SENDER_EMAIL` | — | Sender email for SES diff notifications (Lambda only) |
 
