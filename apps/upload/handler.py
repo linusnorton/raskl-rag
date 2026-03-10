@@ -94,7 +94,7 @@ def _handle_presign(event):
     presigned_url = s3.generate_presigned_url(
         "put_object",
         Params={"Bucket": BUCKET, "Key": s3_key, "ContentType": "application/pdf"},
-        ExpiresIn=600,
+        ExpiresIn=3600,
     )
 
     _write_status(safe_name, "uploaded")

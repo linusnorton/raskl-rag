@@ -85,9 +85,15 @@
       let uploaded = 0;
       let errors = [];
 
+      const MAX_SIZE = 500 * 1024 * 1024; // 500 MB
+
       for (const file of files) {
         if (!file.name.toLowerCase().endsWith(".pdf")) {
           errors.push(`${file.name}: not a PDF`);
+          continue;
+        }
+        if (file.size > MAX_SIZE) {
+          errors.push(`${file.name}: exceeds 500 MB limit (${(file.size / 1024 / 1024).toFixed(0)} MB)`);
           continue;
         }
         try {
