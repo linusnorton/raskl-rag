@@ -95,6 +95,10 @@ def diff_versions(old_dir: Path, new_dir: Path, doc_id: str, old_version: int, n
     # Diff document metadata
     old_meta = _load_document_meta(old_dir / "documents.jsonl")
     new_meta = _load_document_meta(new_dir / "documents.jsonl")
+    for d in (old_meta, new_meta):
+        if d is not None:
+            d.pop("created_at", None)
+            d.pop("source_path", None)
     meta_diff = None
     if old_meta != new_meta:
         meta_diff = "\n".join(

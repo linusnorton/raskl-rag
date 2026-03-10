@@ -33,7 +33,6 @@ class DocumentRecord(BaseModel):
     """Document-level metadata."""
 
     doc_id: str
-    source_path: str
     source_filename: str
     sha256_pdf: str
     created_at: datetime = Field(default_factory=datetime.now)

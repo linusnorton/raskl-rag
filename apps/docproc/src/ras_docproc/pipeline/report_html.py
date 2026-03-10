@@ -65,7 +65,7 @@ def generate_report(
         docs = read_jsonl(doc_dir / "documents.jsonl", DocumentRecord)
         if not docs:
             raise ValueError("No documents.jsonl found")
-        pdf_path = docs[0].source_path
+        pdf_path = docs[0].source_filename
 
     # Render pages
     doc = fitz.open(pdf_path)

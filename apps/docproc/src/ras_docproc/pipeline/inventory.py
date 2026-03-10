@@ -38,7 +38,6 @@ def run_inventory(config: PipelineConfig) -> DocumentRecord:
 
     doc = DocumentRecord(
         doc_id=doc_id,
-        source_path=pdf_path.name,
         source_filename=pdf_path.name,
         sha256_pdf=sha256,
         extraction_version=config.extraction_version,
