@@ -17,6 +17,8 @@ REF_PATTERNS = [
     (re.compile(r"([A-Za-z\)])(\d{1,2})(\s|[.,;:])"), "regex_superscript"),
     # Period-separated: OCR renders superscript as "word.91" — period between letter and digits
     (re.compile(r"([A-Za-z])\.(\d{1,2})(\s|[A-Z]|[.,;:])"), "regex_period_superscript"),
+    # Space-separated: Qwen3 VL renders superscripts as "word. 45" with a space after punctuation
+    (re.compile(r"([.)\]])\s(\d{1,3})(?:\s|$)"), "regex_space_superscript"),
     # Parenthesized: (1), (2), etc.
     (re.compile(r"\((\d{1,2})\)"), "regex_parens"),
     # Bracketed: [1], [2], etc.
@@ -62,7 +64,7 @@ def link_footnote_refs(
             for pattern, match_type in REF_PATTERNS:
                 for m in pattern.finditer(text):
                     try:
-                        if match_type in ("regex_superscript", "regex_period_superscript"):
+                        if match_type in ("regex_superscript", "regex_period_superscript", "regex_space_superscript"):
                             num = int(m.group(2))
                         else:
                             num = int(m.group(1))
@@ -146,6 +148,8 @@ def apply_ref_markup(
         "regex_superscript_xpage",
         "regex_period_superscript",
         "regex_period_superscript_xpage",
+        "regex_space_superscript",
+        "regex_space_superscript_xpage",
         "superscript_span",
         "superscript_span_xpage",
     }
@@ -177,6 +181,10 @@ def apply_ref_markup(
                 if base_type == "regex_period_superscript":
                     # Period-separated: "word.91" → "word [ref:91]"
                     pattern = re.compile(r"([A-Za-z])\." + re.escape(num_str) + r"(?=\s|[A-Z]|[.,;:]|$)")
+                    replacement = rf"\1 [ref:{ref.footnote_number}]"
+                elif base_type == "regex_space_superscript":
+                    # Space-separated: "word. 45" → "word. [ref:45]"
+                    pattern = re.compile(r"([.)\]])\s" + re.escape(num_str) + r"(?=\s|$)")
                     replacement = rf"\1 [ref:{ref.footnote_number}]"
                 else:
                     # Standard superscript: "word91" → "word [ref:91]"

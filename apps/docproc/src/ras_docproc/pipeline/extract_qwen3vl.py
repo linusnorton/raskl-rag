@@ -191,14 +191,8 @@ def _parse_markdown_to_blocks(
             if not line:
                 continue
 
-            # Match numbered footnote: "1. text" or "1 text"
-            m = re.match(r"^(\d+)[.\s]+(.+)", line)
-            if m:
-                text = m.group(2).strip()
-                # Convert ^N superscript notation
-                text = re.sub(r"\^(\d+)", r"<sup>\1</sup>", text)
-            else:
-                text = line
+            # Convert ^N superscript notation
+            text = re.sub(r"\^(\d+)", r"<sup>\1</sup>", line)
 
             if not text:
                 continue

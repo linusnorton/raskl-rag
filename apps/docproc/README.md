@@ -129,8 +129,15 @@ missed when the extraction backend assigns degenerate bboxes to all blocks.
 - `1. Some text` — number then period
 - `1) Some text` — number then bracket
 
+**Multi-footnote splitting:** Qwen3 VL often merges consecutive footnotes into a single text
+block (e.g. `"35 Weld to CO 273/105. 36 Smith (1990: 12)."`). The detection stage splits
+these by finding ascending sequential numbers separated by `. ` boundaries, validating that the
+numbers are close together (gap < 3× count). Each sub-footnote gets its own `FootnoteRecord`
+with independent classification.
+
 **Superscript linking:** Two independent methods run in parallel:
-1. **Regex:** Patterns like `word43` (digit immediately after a letter), `word.43`, `(43)`, `[43]`
+1. **Regex:** Patterns like `word43` (digit immediately after a letter), `word.43`, `word. 45`
+   (space-separated after sentence punctuation), `(43)`, `[43]`
 2. **MuPDF span analysis:** Spans where `font_size < 70% of the median font size on that page` and
    the span contains only digits are treated as superscripts.
 
@@ -150,7 +157,8 @@ using regex-based heuristics in `classify_footnote_type()`. The classification i
 
 **Pattern categories:** Scholarly author-year references (`Gullick (1992: 246-8)`), archival
 sources (`CO 273/105`, `IOR`, `BL/APAC/`), ibid/cross-references, see/cf. references,
-newspaper citations, official documents, URLs, and personal communications.
+newspaper citations, official documents (`'s journal/diary` — matches both straight and curly
+apostrophes, with or without trailing comma), URLs, and personal communications.
 
 **Citation vs mixed:** After removing all citation pattern matches from the text, if ≤8 words
 remain, it's a pure `citation`; otherwise `mixed`. Footnotes with no citation patterns are

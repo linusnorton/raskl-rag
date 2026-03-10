@@ -317,12 +317,168 @@ class TestAbdullahPipeline:
 
         blocks = read_jsonl(doc_dir / "text_blocks.jsonl", TextBlockRecord)
         blocks_with_refs = [b for b in blocks if "[ref:" in b.text_clean]
-        # Abdullah has footnotes, so we expect at least some ref markup
-        # (this depends on superscript refs being detected)
         refs = read_jsonl(doc_dir / "footnote_refs.jsonl", FootnoteRefRecord)
-        superscript_refs = [r for r in refs if r.match_type in ("regex_superscript", "superscript_span")]
-        if superscript_refs:
+        markup_types = {
+            "regex_superscript", "superscript_span", "regex_space_superscript",
+            "regex_superscript_xpage", "superscript_span_xpage", "regex_space_superscript_xpage",
+            "regex_period_superscript", "regex_period_superscript_xpage",
+        }
+        markupable_refs = [r for r in refs if r.match_type in markup_types]
+        if markupable_refs:
             assert len(blocks_with_refs) > 0, "Expected [ref:N] markup in text_clean when superscript refs exist"
+
+
+class TestFootnotePipeline:
+    """Test footnote detection, splitting, classification and ref linking on pre-processed data.
+
+    Runs the footnote pipeline stages on existing text_blocks.jsonl rather than
+    re-extracting through Qwen3 VL, so no Bedrock access is needed.
+    """
+
+    def _run_footnote_pipeline(
+        self, abdullah_data_dir: Path, abdullah_pdf: Path
+    ) -> tuple[list[FootnoteRecord], list[FootnoteRefRecord], dict[int, list[TextBlockRecord]]]:
+        """Load pre-processed blocks and run footnote detection + ref linking."""
+        from ras_docproc.pipeline.extract_mupdf import extract_with_mupdf
+
+        doc_id = abdullah_data_dir.name
+
+        # Load pre-processed text blocks (includes footnote blocks with block_type still set)
+        all_blocks = read_jsonl(abdullah_data_dir / "text_blocks.jsonl", TextBlockRecord)
+
+        # Also load the original footnote blocks (they were removed from text_blocks during export)
+        original_fns = read_jsonl(abdullah_data_dir / "footnotes.jsonl", FootnoteRecord)
+
+        # Reconstruct blocks_by_page, re-adding footnote text as footnote-typed blocks
+        blocks_by_page: dict[int, list[TextBlockRecord]] = {}
+        for b in all_blocks:
+            blocks_by_page.setdefault(b.page_num_1, []).append(b)
+        for fn in original_fns:
+            block = TextBlockRecord(
+                block_id=fn.footnote_id,
+                doc_id=doc_id,
+                page_num_1=fn.page_num_1,
+                bbox=fn.bbox,
+                text_raw=fn.text_raw,
+                text_clean=fn.text_clean or fn.text_raw,
+                block_type="footnote",
+            )
+            blocks_by_page.setdefault(fn.page_num_1, []).append(block)
+
+        # Get page heights from MuPDF (needs the PDF file)
+        config = PipelineConfig(pdf_path=abdullah_pdf, out_dir=abdullah_data_dir.parent, force=True)
+        mupdf_data = extract_with_mupdf(config)
+        page_heights = {pn: pd.height for pn, pd in mupdf_data.items()}
+
+        # Run footnote detection (with splitting)
+        blocks_by_page, footnotes = detect_footnotes(blocks_by_page, page_heights, config, doc_id)
+
+        # Remove footnote blocks from body text for ref linking
+        body_blocks: dict[int, list[TextBlockRecord]] = {}
+        for pg, blks in blocks_by_page.items():
+            body_blocks[pg] = [b for b in blks if b.block_type != "footnote"]
+
+        # Run ref linking (regex only, pass mupdf_data for superscript detection too)
+        refs = link_footnote_refs(body_blocks, footnotes, mupdf_data, doc_id)
+
+        # Apply ref markup
+        body_blocks = apply_ref_markup(body_blocks, refs)
+
+        return footnotes, refs, body_blocks
+
+    def test_multi_footnote_splitting(self, abdullah_data_dir: Path, abdullah_pdf: Path):
+        """Verify merged footnote blocks are split into individual footnotes.
+
+        Qwen3 VL merges consecutive footnotes like "35 Weld to CO 273/105. 36 Smith (1990)"
+        into a single block. The pipeline should split these into separate FootnoteRecords.
+        """
+        footnotes, _, _ = self._run_footnote_pipeline(abdullah_data_dir, abdullah_pdf)
+        fn_numbers = {fn.footnote_number for fn in footnotes}
+
+        # Page 8 has merged block "39 King George V's diary. 40 Winstedt (1992: 126)."
+        assert 39 in fn_numbers, "Footnote 39 should be detected"
+        assert 40 in fn_numbers, "Footnote 40 should be split from merged block with 39"
+
+        # Page 9 has merged block "45 King George V's diary, 13 January 1882. 46"
+        assert 45 in fn_numbers, "Footnote 45 should be detected"
+        assert 46 in fn_numbers, "Footnote 46 should be split from merged block with 45"
+
+        # Page 8 has merged block "35 Weld to Kimberley, CO 273/105. 36"
+        assert 35 in fn_numbers, "Footnote 35 should be detected"
+        assert 36 in fn_numbers, "Footnote 36 should be split from merged block with 35"
+
+    def test_footnote_type_classification(self, abdullah_data_dir: Path, abdullah_pdf: Path):
+        """Verify footnotes are classified as citation/explanatory/mixed."""
+        footnotes, _, _ = self._run_footnote_pipeline(abdullah_data_dir, abdullah_pdf)
+        assert len(footnotes) > 0
+
+        # All footnotes should have a valid type
+        for fn in footnotes:
+            assert fn.footnote_type in ("citation", "explanatory", "mixed"), (
+                f"Footnote {fn.footnote_number} has invalid type: {fn.footnote_type}"
+            )
+
+        # Citation footnotes should include diary/journal and archival refs
+        citation_fns = [fn for fn in footnotes if fn.footnote_type == "citation"]
+        assert len(citation_fns) >= 5, (
+            f"Expected at least 5 citation footnotes, got {len(citation_fns)}"
+        )
+
+        # Check specific known citations
+        fn_by_num = {fn.footnote_number: fn for fn in footnotes}
+        if 35 in fn_by_num:
+            assert fn_by_num[35].footnote_type == "citation", (
+                "Footnote 35 ('Weld to Kimberley, CO 273/105') should be citation"
+            )
+        if 39 in fn_by_num:
+            assert fn_by_num[39].footnote_type == "citation", (
+                "Footnote 39 ('King George V's diary') should be citation"
+            )
+
+    def test_parenthesized_refs_detected(self, abdullah_data_dir: Path, abdullah_pdf: Path):
+        """Verify footnote refs are detected for parenthesized numbers.
+
+        Qwen3 VL renders Abdullah's footnote markers as "(N)" in body text.
+        """
+        _, refs, _ = self._run_footnote_pipeline(abdullah_data_dir, abdullah_pdf)
+        assert len(refs) > 0, "Expected footnote refs to be detected"
+
+        match_types = {r.match_type for r in refs}
+        assert "regex_parens" in match_types, (
+            f"Expected regex_parens refs, got match types: {match_types}"
+        )
+
+    def test_ref_coverage(self, abdullah_data_dir: Path, abdullah_pdf: Path):
+        """Verify most footnotes have a corresponding ref in body text."""
+        footnotes, refs, _ = self._run_footnote_pipeline(abdullah_data_dir, abdullah_pdf)
+
+        if not footnotes:
+            pytest.skip("No footnotes detected")
+
+        ref_fn_numbers = {r.footnote_number for r in refs}
+        fn_numbers = {fn.footnote_number for fn in footnotes}
+        coverage = len(ref_fn_numbers & fn_numbers) / len(fn_numbers)
+        assert coverage >= 0.5, (
+            f"Expected >=50% ref coverage, got {coverage:.0%} "
+            f"({len(ref_fn_numbers & fn_numbers)}/{len(fn_numbers)})"
+        )
+
+    def test_citation_footnotes_cover_primary_sources(self, abdullah_data_dir: Path, abdullah_pdf: Path):
+        """Verify diary/journal/dispatch footnotes are classified as citations.
+
+        These are the references the RAG system needs to 'unpack' — when a
+        journal article cites a colonial office dispatch or royal diary, the
+        [cites:] marker should signal the LLM to mention the original source.
+        """
+        footnotes, _, _ = self._run_footnote_pipeline(abdullah_data_dir, abdullah_pdf)
+        citation_fns = [fn for fn in footnotes if fn.footnote_type in ("citation", "mixed")]
+        citation_texts = " ".join(fn.text_clean for fn in citation_fns)
+
+        # These primary source types should be captured as citations
+        assert "diary" in citation_texts.lower(), "Expected diary references in citation footnotes"
+        assert "CO " in citation_texts or "CO\xa0" in citation_texts, (
+            "Expected Colonial Office (CO) refs in citation footnotes"
+        )
 
 
 class TestOCRCleanup:

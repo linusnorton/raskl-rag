@@ -27,7 +27,7 @@ FOOTNOTE_PATTERNS = [
 
 _CITATION_PATTERNS = [
     # Scholarly author-year: "Gullick (1992: 246-8)", "Wong (2015)", "Zedler (1731-54)"
-    re.compile(r"\b[A-Z][a-z]+\s*\(\d{4}(?:[a-z])?(?::\s*[\d\-,\s]+)?\)"),
+    re.compile(r"\b[A-Z][a-z]+\s*\(\d{4}(?:[a-z])?(?::\s*[\d\-–—,\s]+)?\)"),
     # Archival / manuscript sources
     re.compile(r"\bCO\s*\d+/\d+"),
     re.compile(r"\bFO\s*\d+/\d+"),
@@ -49,7 +49,7 @@ _CITATION_PATTERNS = [
     # Official documents / dispatches
     re.compile(r"\bSSD\s*,"),
     re.compile(r"\bSSJ\s*,"),
-    re.compile(r"'s\s+(?:journal|diary)\s*,"),
+    re.compile(r"['\u2019]s\s+(?:journal|diary)\b"),
     re.compile(r"Annual\s+Report\s+\d{4}"),
     re.compile(r"National\s+Archives\b"),
     # URLs / internet sources
@@ -112,22 +112,8 @@ def detect_footnotes(
         for block in blocks:
             if block.block_type == "footnote":
                 # Already classified by extraction stage
-                fn_num = _extract_footnote_number(block.text_clean or block.text_raw)
-                if fn_num is not None:
-                    fn_id = make_block_id(doc_id, page_num, "fn", "footnote", text_hash(block.text_raw))
-                    fn_type = classify_footnote_type(block.text_clean or block.text_raw)
-                    all_footnotes.append(
-                        FootnoteRecord(
-                            footnote_id=fn_id,
-                            doc_id=doc_id,
-                            page_num_1=page_num,
-                            footnote_number=fn_num,
-                            bbox=block.bbox,
-                            text_raw=block.text_raw,
-                            text_clean=block.text_clean,
-                            footnote_type=fn_type,
-                        )
-                    )
+                text = block.text_clean or block.text_raw
+                _emit_footnotes(text, block, page_num, doc_id, all_footnotes)
                 continue
 
             # Check if block is in footnote zone
@@ -144,23 +130,59 @@ def detect_footnotes(
             fn_num = _extract_footnote_number(text)
             if fn_num is not None:
                 block.block_type = "footnote"
-                fn_id = make_block_id(doc_id, page_num, "fn", "footnote", text_hash(block.text_raw))
-                fn_type = classify_footnote_type(text)
-                all_footnotes.append(
-                    FootnoteRecord(
-                        footnote_id=fn_id,
-                        doc_id=doc_id,
-                        page_num_1=page_num,
-                        footnote_number=fn_num,
-                        bbox=block.bbox,
-                        text_raw=block.text_raw,
-                        text_clean=block.text_clean,
-                        footnote_type=fn_type,
-                    )
-                )
+                _emit_footnotes(text, block, page_num, doc_id, all_footnotes)
 
     logger.info("Detected %d footnotes across %d pages", len(all_footnotes), len(blocks_by_page))
     return blocks_by_page, all_footnotes
+
+
+def _emit_footnotes(
+    text: str,
+    block: TextBlockRecord,
+    page_num: int,
+    doc_id: str,
+    all_footnotes: list[FootnoteRecord],
+) -> None:
+    """Create FootnoteRecord(s) from a footnote block, splitting merged footnotes."""
+    # Try splitting multi-footnote blocks first
+    splits = _split_multi_footnote(text)
+    if splits:
+        for fn_num, fn_text in splits:
+            # Reconstruct the footnote text with number prefix for classification
+            full_text = f"{fn_num} {fn_text}"
+            fn_id = make_block_id(doc_id, page_num, "fn", "footnote", text_hash(full_text))
+            fn_type = classify_footnote_type(full_text)
+            all_footnotes.append(
+                FootnoteRecord(
+                    footnote_id=fn_id,
+                    doc_id=doc_id,
+                    page_num_1=page_num,
+                    footnote_number=fn_num,
+                    bbox=block.bbox,
+                    text_raw=full_text,
+                    text_clean=full_text,
+                    footnote_type=fn_type,
+                )
+            )
+        return
+
+    # Single footnote
+    fn_num = _extract_footnote_number(text)
+    if fn_num is not None:
+        fn_id = make_block_id(doc_id, page_num, "fn", "footnote", text_hash(block.text_raw))
+        fn_type = classify_footnote_type(text)
+        all_footnotes.append(
+            FootnoteRecord(
+                footnote_id=fn_id,
+                doc_id=doc_id,
+                page_num_1=page_num,
+                footnote_number=fn_num,
+                bbox=block.bbox,
+                text_raw=block.text_raw,
+                text_clean=block.text_clean,
+                footnote_type=fn_type,
+            )
+        )
 
 
 def _extract_footnote_number(text: str) -> int | None:
@@ -171,3 +193,55 @@ def _extract_footnote_number(text: str) -> int | None:
         if m:
             return int(m.group(1))
     return None
+
+
+# Regex to split merged footnotes: "35 Text here. 36 More text." → [(35, "Text here."), (36, "More text.")]
+_MULTI_FN_SPLIT = re.compile(r"(?:^|\.\s+)(\d{1,3})(?:\s|$)")
+
+
+def _split_multi_footnote(text: str) -> list[tuple[int, str]]:
+    """Split a block that may contain multiple footnotes into (number, text) pairs.
+
+    Qwen3 VL often merges consecutive footnotes into a single text block, e.g.:
+    "35 Weld to Kimberley, CO 273/105. 36 Smith (1990: 12)."
+    → [(35, "Weld to Kimberley, CO 273/105."), (36, "Smith (1990: 12).")]
+    """
+    text = text.strip()
+
+    # Find all footnote number positions
+    positions: list[tuple[int, int]] = []  # (char_offset, footnote_number)
+    for m in _MULTI_FN_SPLIT.finditer(text):
+        num = int(m.group(1))
+        # Use the start of the digit, not the full match (which may include ". ")
+        positions.append((m.start(1), num))
+
+    if len(positions) <= 1:
+        # Single footnote — use the normal extraction path
+        return []
+
+    # Validate: footnote numbers should be ascending and sequential (or nearly so)
+    numbers = [n for _, n in positions]
+    if not all(numbers[i] < numbers[i + 1] for i in range(len(numbers) - 1)):
+        return []
+    if numbers[-1] - numbers[0] >= len(numbers) * 3:
+        # Numbers too spread out — probably not merged footnotes
+        return []
+
+    # Split text at each footnote number boundary
+    result: list[tuple[int, str]] = []
+    for i, (offset, num) in enumerate(positions):
+        # Text starts after "N " (number + space)
+        num_str = str(num)
+        text_start = offset + len(num_str)
+        # Text ends at the next footnote's ". N" boundary or end of string
+        if i + 1 < len(positions):
+            next_offset = positions[i + 1][0]
+            # Walk back to find the ". " before the next number
+            fn_text = text[text_start:next_offset].strip()
+            # Remove trailing period/space if present (it belongs to the boundary)
+            fn_text = fn_text.rstrip()
+        else:
+            fn_text = text[text_start:].strip()
+        result.append((num, fn_text))
+
+    return result
