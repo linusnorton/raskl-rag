@@ -9,6 +9,10 @@ resource "aws_lambda_function" "docproc" {
   memory_size                    = 3008
   reserved_concurrent_executions = 5
 
+  ephemeral_storage {
+    size = 10240  # 10 GB — large PDFs (300+ pages) generate many page images
+  }
+
   environment {
     variables = {
       # S3

@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -17,6 +18,27 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 s3 = boto3.client("s3")
+
+
+def _cleanup_tmp():
+    """Remove stale temp files from previous invocations that timed out.
+
+    When a Lambda times out, the TemporaryDirectory context manager never
+    runs cleanup. The next invocation on the same warm container inherits
+    the leftover files, which can fill /tmp and cause 'No usable temporary
+    directory found' errors.
+    """
+    tmp = Path("/tmp")
+    for entry in tmp.iterdir():
+        if entry.name in ("uv-cache",):
+            continue  # preserve uv cache
+        try:
+            if entry.is_dir():
+                shutil.rmtree(entry)
+            else:
+                entry.unlink()
+        except Exception:
+            pass
 
 
 def _write_status(bucket, filename, stage, error=None):
@@ -37,6 +59,8 @@ def _write_status(bucket, filename, stage, error=None):
 
 def lambda_handler(event, context):
     """Process S3 event: download PDF, run docproc with Qwen3 VL, upload versioned JSONL, diff + email."""
+    _cleanup_tmp()
+
     for record in event.get("Records", []):
         bucket = record["s3"]["bucket"]["name"]
         key = unquote_plus(record["s3"]["object"]["key"])
