@@ -313,7 +313,8 @@ def run_all(docs_dir: Path, out_dir: Path, force: bool, workers: int | None) -> 
 @click.option("--pages", default=None, help="Comma-separated page numbers to include")
 @click.option("--out-dir", default="data", type=click.Path(path_type=Path), help="Data directory")
 @click.option("--output", default=None, type=click.Path(path_type=Path), help="Output HTML path")
-def report(doc_id: str, pages: str | None, out_dir: Path, output: Path | None) -> None:
+@click.option("--pdf", "pdf_path", default=None, type=click.Path(exists=True, path_type=Path), help="Source PDF path")
+def report(doc_id: str, pages: str | None, out_dir: Path, output: Path | None, pdf_path: Path | None) -> None:
     """Generate an HTML debug report for a processed document."""
     from ras_docproc.pipeline.report_html import generate_report
 
@@ -329,7 +330,7 @@ def report(doc_id: str, pages: str | None, out_dir: Path, output: Path | None) -
     if output is None:
         output = Path("reports") / f"{doc_id}_report.html"
 
-    generate_report(doc_dir, output, page_filter=page_list)
+    generate_report(doc_dir, output, page_filter=page_list, pdf_path=pdf_path)
     console.print(f"[bold green]Report generated:[/] {output}")
 
 

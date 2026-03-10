@@ -33,6 +33,7 @@ def generate_report(
     output_path: Path,
     page_filter: list[int] | None = None,
     dpi: int = 150,
+    pdf_path: str | Path | None = None,
 ) -> None:
     """Generate an HTML debug report with page images and SVG overlays.
 
@@ -41,6 +42,7 @@ def generate_report(
         output_path: Path for the output HTML file.
         page_filter: Optional list of page numbers (1-based) to include.
         dpi: DPI for page rendering.
+        pdf_path: Path to the source PDF. If not given, reads from documents.jsonl.
     """
     # Load data
     pages = read_jsonl(doc_dir / "pages.jsonl", PageRecord)
@@ -56,13 +58,14 @@ def generate_report(
     for f in figures:
         figs_by_page.setdefault(f.page_num_1, []).append(f)
 
-    # Get source PDF path from documents.jsonl
-    from ras_docproc.schema import DocumentRecord
+    # Resolve source PDF path
+    if pdf_path is None:
+        from ras_docproc.schema import DocumentRecord
 
-    docs = read_jsonl(doc_dir / "documents.jsonl", DocumentRecord)
-    if not docs:
-        raise ValueError("No documents.jsonl found")
-    pdf_path = docs[0].source_path
+        docs = read_jsonl(doc_dir / "documents.jsonl", DocumentRecord)
+        if not docs:
+            raise ValueError("No documents.jsonl found")
+        pdf_path = docs[0].source_path
 
     # Render pages
     doc = fitz.open(pdf_path)

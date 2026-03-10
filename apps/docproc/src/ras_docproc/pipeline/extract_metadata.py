@@ -15,6 +15,19 @@ DOI_RE = re.compile(r"10\.\d{4,}/[^\s]+")
 # Regex for stable URL
 URL_RE = re.compile(r"https?://[^\s]+")
 
+# Markdown link suffix: Qwen3 VL sometimes renders hyperlinks as [text](url)
+_MD_LINK_TAIL_RE = re.compile(r"\]\(https?://[^\s)]+\)$")
+
+
+def _strip_markdown_link(value: str) -> str:
+    """Strip markdown-style link tail from extracted URLs/DOIs.
+
+    Qwen3 VL renders hyperlinks as markdown, so a DOI can appear as:
+      10.1353/ras.2016.0025](https://doi.org/10.1353/ras.2016.0025)
+    This strips the "](url)" suffix.
+    """
+    return _MD_LINK_TAIL_RE.sub("", value)
+
 # Regex for JSTOR/academic source line, e.g.:
 # "Source: Journal of ..., Vol. 84, No. 1 (June 2011), pp. 1-22"
 SOURCE_RE = re.compile(
@@ -231,17 +244,17 @@ def extract_metadata(
     if url_line_match and not document.url:
         url_m = URL_RE.search(url_line_match.group(1))
         if url_m:
-            document.url = url_m.group(0).rstrip(".")
+            document.url = _strip_markdown_link(url_m.group(0).rstrip("."))
     # Fallback: any URL on cover pages
     if not document.url:
         url_m = URL_RE.search(cover_text)
         if url_m:
-            document.url = url_m.group(0).rstrip(".")
+            document.url = _strip_markdown_link(url_m.group(0).rstrip("."))
 
     # DOI
     doi_match = DOI_RE.search(cover_text)
     if doi_match and not document.doi:
-        document.doi = doi_match.group(0).rstrip(".")
+        document.doi = _strip_markdown_link(doi_match.group(0).rstrip("."))
 
     # Title heuristic: largest heading on page 1, or first substantial line
     if not document.title:
