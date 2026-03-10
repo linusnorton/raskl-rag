@@ -1,10 +1,5 @@
 # --- Admin Lambda (FastAPI + Lambda Web Adapter) ---
 
-import {
-  to = aws_lambda_function.admin
-  id = "raskl-admin"
-}
-
 resource "aws_lambda_function" "admin" {
   function_name = "${local.prefix}-admin"
   role          = aws_iam_role.lambda_exec.arn
