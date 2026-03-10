@@ -97,10 +97,14 @@ def lambda_handler(event, context):
                     _write_status(bucket, filename, "error", "OCR failed — empty output")
                     continue
 
+                # Mark processed BEFORE uploading — the upload triggers the chunker
+                # via S3 notification, and the chunker can finish (setting "done")
+                # before _upload_versioned_output returns (due to slow diff/email).
+                _write_status(bucket, filename, "processed")
+
                 # Upload versioned JSONL to S3 and run diff + email
                 version = _upload_versioned_output(bucket, doc_id, out_dir, tmpdir, filename=filename)
                 logger.info("Output uploaded to s3://%s/processed/%s/v%d/", bucket, doc_id, version)
-                _write_status(bucket, filename, "processed")
         except Exception:
             logger.exception("Failed to process %s", filename)
             _write_status(bucket, filename, "error", "DocProc failed")
