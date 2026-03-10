@@ -223,18 +223,15 @@ def _parse_markdown_to_blocks(
     return blocks
 
 
-def _process_page(
+def _process_page_bedrock(
     config: PipelineConfig,
     doc_id: str,
     page_num: int,
+    img_bytes: bytes,
+    page_width: float,
+    page_height: float,
 ) -> tuple[int, list[TextBlockRecord]]:
-    """Process a single page: render → Bedrock call → parse. Returns (page_num, blocks)."""
-    page_idx = page_num - 1
-    pdf_path = str(config.pdf_path)
-
-    img_bytes, page_width, page_height = _render_page_to_image_bytes(pdf_path, page_idx, config.qwen3vl_dpi)
-    logger.debug("Qwen3 VL: page %d rendered (%d bytes)", page_num, len(img_bytes))
-
+    """Call Bedrock and parse response for a single page. Returns (page_num, blocks)."""
     markdown = _call_bedrock(
         config.bedrock_region,
         config.bedrock_ocr_model_id,
@@ -252,7 +249,10 @@ def extract_with_qwen3vl(config: PipelineConfig, doc_id: str) -> dict[int, list[
     """Extract structured text blocks from PDF using Bedrock Qwen3 VL.
 
     Returns a dict mapping page_num_1 -> list of TextBlockRecord.
-    Pages are processed in parallel using ThreadPoolExecutor.
+
+    Page rendering (PyMuPDF) is done sequentially to avoid segfaults with
+    certain PDFs under concurrent fitz access. Bedrock API calls are then
+    parallelized via ThreadPoolExecutor since they are I/O-bound.
     """
     logger.info("Running Qwen3 VL extraction on %s (model=%s)", config.pdf_path.name, config.bedrock_ocr_model_id)
 
@@ -273,10 +273,23 @@ def extract_with_qwen3vl(config: PipelineConfig, doc_id: str) -> dict[int, list[
             continue
         pages_to_process.append(page_num)
 
+    # Render all pages sequentially (PyMuPDF segfaults with some PDFs under concurrent access)
+    rendered: dict[int, tuple[bytes, float, float]] = {}
+    for page_num in pages_to_process:
+        img_bytes, page_width, page_height = _render_page_to_image_bytes(pdf_path, page_num - 1, config.qwen3vl_dpi)
+        rendered[page_num] = (img_bytes, page_width, page_height)
+        logger.debug("Qwen3 VL: page %d rendered (%d bytes)", page_num, len(img_bytes))
+
+    # Parallelize Bedrock API calls (I/O-bound)
     blocks_by_page: dict[int, list[TextBlockRecord]] = {}
 
     with ThreadPoolExecutor(max_workers=config.qwen3vl_max_workers) as executor:
-        futures = {executor.submit(_process_page, config, doc_id, page_num): page_num for page_num in pages_to_process}
+        futures = {
+            executor.submit(
+                _process_page_bedrock, config, doc_id, page_num, *rendered[page_num]
+            ): page_num
+            for page_num in pages_to_process
+        }
 
         for future in as_completed(futures):
             page_num = futures[future]
