@@ -3,7 +3,7 @@
 {% block title %}Diff — {{ doc.source_filename }}{% endblock %}
 {% block content %}
 <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 20px;">
-  <a href="/admin/documents/{{ doc.doc_id }}" style="color: #64748b;">&larr; {{ doc.source_filename }}</a>
+  <a href="/documents/{{ doc.doc_id }}" style="color: #64748b;">&larr; {{ doc.source_filename }}</a>
   <h1 style="font-size: 1.3em; flex:1;">Version Diff</h1>
 </div>
 
@@ -36,7 +36,7 @@ async function loadDiff() {
   const container = document.getElementById('diffResult');
   container.innerHTML = '<p style="color:#64748b;">Loading diff...</p>';
 
-  const resp = await fetch(`/admin/api/diff/${DOC_ID}?v1=${v1}&v2=${v2}`);
+  const resp = await fetch(`/api/diff/${DOC_ID}?v1=${v1}&v2=${v2}`);
   const data = await resp.json();
 
   if (!data.file_diffs || data.file_diffs.length === 0) {

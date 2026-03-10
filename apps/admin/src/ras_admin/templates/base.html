@@ -113,13 +113,13 @@
   {% if user %}
   <nav>
     <span class="brand">SwetBot Admin</span>
-    <a href="/admin/" class="{% if active_page == 'dashboard' %}active{% endif %}">Dashboard</a>
-    <a href="/admin/documents" class="{% if active_page == 'documents' %}active{% endif %}">Documents</a>
-    <a href="/admin/upload" class="{% if active_page == 'upload' %}active{% endif %}">Upload</a>
+    <a href="/" class="{% if active_page == 'dashboard' %}active{% endif %}">Dashboard</a>
+    <a href="/documents" class="{% if active_page == 'documents' %}active{% endif %}">Documents</a>
+    <a href="/upload" class="{% if active_page == 'upload' %}active{% endif %}">Upload</a>
     <span class="spacer"></span>
     <span class="user-info">
       {{ user.name or user.email }}
-      <a href="/admin/logout">Logout</a>
+      <a href="/logout">Logout</a>
     </span>
   </nav>
   {% endif %}

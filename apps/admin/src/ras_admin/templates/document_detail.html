@@ -3,7 +3,7 @@
 {% block title %}{{ doc.source_filename }}{% endblock %}
 {% block content %}
 <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 20px;">
-  <a href="/admin/documents" style="color: #64748b;">&larr; Documents</a>
+  <a href="/documents" style="color: #64748b;">&larr; Documents</a>
   <h1 style="font-size: 1.3em; flex:1;">{{ doc.source_filename }}</h1>
   <button class="btn btn-primary" onclick="reprocess()">Reprocess</button>
   <button class="btn btn-secondary" onclick="reindex()">Reindex</button>
@@ -43,7 +43,7 @@
       <td>{{ c.indexed_at.strftime('%Y-%m-%d %H:%M') if c.indexed_at else "" }}</td>
       <td>
         {% if not loop.last %}
-        <a class="btn btn-secondary" style="padding:4px 10px; font-size:0.8em;" href="/admin/diff/{{ doc.doc_id }}?v1={{ changes[loop.index].version }}&v2={{ c.version }}">Diff</a>
+        <a class="btn btn-secondary" style="padding:4px 10px; font-size:0.8em;" href="/diff/{{ doc.doc_id }}?v1={{ changes[loop.index].version }}&v2={{ c.version }}">Diff</a>
         {% endif %}
       </td>
     </tr>
@@ -61,12 +61,12 @@
     {% for fig in figures %}
     <div class="figure-card">
       {% if fig.thumb_path %}
-      <a href="/admin/api/images/{{ doc.doc_id }}/{{ fig.asset_path }}" target="_blank">
-        <img src="/admin/api/images/{{ doc.doc_id }}/{{ fig.thumb_path }}" alt="Page {{ fig.page_num }}" style="height:120px; width:100%; object-fit:cover;">
+      <a href="/api/images/{{ doc.doc_id }}/{{ fig.asset_path }}" target="_blank">
+        <img src="/api/images/{{ doc.doc_id }}/{{ fig.thumb_path }}" alt="Page {{ fig.page_num }}" style="height:120px; width:100%; object-fit:cover;">
       </a>
       {% elif fig.asset_path %}
-      <a href="/admin/api/images/{{ doc.doc_id }}/{{ fig.asset_path }}" target="_blank">
-        <img src="/admin/api/images/{{ doc.doc_id }}/{{ fig.asset_path }}" alt="Page {{ fig.page_num }}" style="height:120px; width:100%; object-fit:cover;">
+      <a href="/api/images/{{ doc.doc_id }}/{{ fig.asset_path }}" target="_blank">
+        <img src="/api/images/{{ doc.doc_id }}/{{ fig.asset_path }}" alt="Page {{ fig.page_num }}" style="height:120px; width:100%; object-fit:cover;">
       </a>
       {% else %}
       <div style="height:120px; background:#f1f5f9; display:flex; align-items:center; justify-content:center; color:#94a3b8; font-size:0.8em;">
@@ -116,12 +116,12 @@ async function apiCall(url, method='POST') {
   }
 }
 
-function reprocess() { apiCall(`/admin/api/documents/${DOC_ID}/reprocess`); }
-function reindex() { apiCall(`/admin/api/documents/${DOC_ID}/reindex`); }
+function reprocess() { apiCall(`/api/documents/${DOC_ID}/reprocess`); }
+function reindex() { apiCall(`/api/documents/${DOC_ID}/reindex`); }
 function deleteDoc() {
   if (!confirm('Delete this document? This cannot be undone.')) return;
-  apiCall(`/admin/api/documents/${DOC_ID}`, 'DELETE').then(() => {
-    setTimeout(() => window.location = '/admin/documents', 1000);
+  apiCall(`/api/documents/${DOC_ID}`, 'DELETE').then(() => {
+    setTimeout(() => window.location = '/documents', 1000);
   });
 }
 
@@ -142,7 +142,7 @@ async function loadJsonlTab(filename, btn) {
   jsonlIndex = 0;
   updateJsonlNav();
 
-  const resp = await fetch(`/admin/api/documents/${DOC_ID}/jsonl/${filename}`);
+  const resp = await fetch(`/api/documents/${DOC_ID}/jsonl/${filename}`);
   if (!resp.ok) {
     content.textContent = 'File not found or empty.';
     return;

@@ -44,25 +44,25 @@ def _user_or_redirect(request: Request) -> dict[str, Any] | None:
 # --- Login ---
 
 
-@app.get("/admin/login", response_class=HTMLResponse)
+@app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request, error: str = ""):
     return templates.TemplateResponse("login.html", {"request": request, "error": error})
 
 
-@app.post("/admin/login")
+@app.post("/login")
 async def login_submit(request: Request, email: str = Form(...), password: str = Form(...)):
     user_info = authenticate_with_open_webui(config, email, password)
     if user_info is None:
         return templates.TemplateResponse("login.html", {"request": request, "error": "Invalid credentials"})
     token = create_session_token(config, user_info)
-    response = RedirectResponse(url="/admin/", status_code=303)
+    response = RedirectResponse(url="/", status_code=303)
     set_session_cookie(response, token)
     return response
 
 
-@app.get("/admin/logout")
+@app.get("/logout")
 async def logout():
-    response = RedirectResponse(url="/admin/login", status_code=303)
+    response = RedirectResponse(url="/login", status_code=303)
     response.delete_cookie(COOKIE_NAME, path="/")
     return response
 
@@ -70,12 +70,11 @@ async def logout():
 # --- Dashboard ---
 
 
-@app.get("/admin/", response_class=HTMLResponse)
-@app.get("/admin", response_class=HTMLResponse)
+@app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
     user = _user_or_redirect(request)
     if user is None:
-        return RedirectResponse(url="/admin/login", status_code=303)
+        return RedirectResponse(url="/login", status_code=303)
 
     conn = db.get_connection(config)
     try:
@@ -112,11 +111,11 @@ async def dashboard(request: Request):
 # --- Pipeline Status ---
 
 
-@app.get("/admin/pipeline", response_class=HTMLResponse)
+@app.get("/pipeline", response_class=HTMLResponse)
 async def pipeline_status_page(request: Request, stage: str = ""):
     user = _user_or_redirect(request)
     if user is None:
-        return RedirectResponse(url="/admin/login", status_code=303)
+        return RedirectResponse(url="/login", status_code=303)
 
     statuses = []
     if config.s3_bucket:
@@ -137,11 +136,11 @@ async def pipeline_status_page(request: Request, stage: str = ""):
 # --- Documents List ---
 
 
-@app.get("/admin/documents", response_class=HTMLResponse)
+@app.get("/documents", response_class=HTMLResponse)
 async def documents_list(request: Request, q: str = ""):
     user = _user_or_redirect(request)
     if user is None:
-        return RedirectResponse(url="/admin/login", status_code=303)
+        return RedirectResponse(url="/login", status_code=303)
 
     conn = db.get_connection(config)
     try:
@@ -166,11 +165,11 @@ async def documents_list(request: Request, q: str = ""):
 # --- Document Detail ---
 
 
-@app.get("/admin/documents/{doc_id}", response_class=HTMLResponse)
+@app.get("/documents/{doc_id}", response_class=HTMLResponse)
 async def document_detail(request: Request, doc_id: str):
     user = _user_or_redirect(request)
     if user is None:
-        return RedirectResponse(url="/admin/login", status_code=303)
+        return RedirectResponse(url="/login", status_code=303)
 
     conn = db.get_connection(config)
     try:
@@ -208,7 +207,7 @@ async def document_detail(request: Request, doc_id: str):
 # --- Document Actions (API endpoints) ---
 
 
-@app.post("/admin/api/documents/{doc_id}/reprocess")
+@app.post("/api/documents/{doc_id}/reprocess")
 async def reprocess_document(request: Request, doc_id: str):
     user = _user_or_redirect(request)
     if user is None:
@@ -232,7 +231,7 @@ async def reprocess_document(request: Request, doc_id: str):
     return JSONResponse({"ok": True, "message": f"Reprocessing triggered for {doc['source_filename']}"})
 
 
-@app.post("/admin/api/documents/{doc_id}/reindex")
+@app.post("/api/documents/{doc_id}/reindex")
 async def reindex_document(request: Request, doc_id: str):
     user = _user_or_redirect(request)
     if user is None:
@@ -250,7 +249,7 @@ async def reindex_document(request: Request, doc_id: str):
     return JSONResponse({"ok": True, "message": f"Reindexing triggered for v{latest['version']}"})
 
 
-@app.delete("/admin/api/documents/{doc_id}")
+@app.delete("/api/documents/{doc_id}")
 async def delete_document(request: Request, doc_id: str):
     user = _user_or_redirect(request)
     if user is None:
@@ -278,11 +277,11 @@ async def delete_document(request: Request, doc_id: str):
 # --- Diff API ---
 
 
-@app.get("/admin/diff/{doc_id}", response_class=HTMLResponse)
+@app.get("/diff/{doc_id}", response_class=HTMLResponse)
 async def diff_page(request: Request, doc_id: str, v1: int = 0, v2: int = 0):
     user = _user_or_redirect(request)
     if user is None:
-        return RedirectResponse(url="/admin/login", status_code=303)
+        return RedirectResponse(url="/login", status_code=303)
 
     conn = db.get_connection(config)
     try:
@@ -303,7 +302,7 @@ async def diff_page(request: Request, doc_id: str, v1: int = 0, v2: int = 0):
     )
 
 
-@app.get("/admin/api/diff/{doc_id}")
+@app.get("/api/diff/{doc_id}")
 async def get_diff(request: Request, doc_id: str, v1: int = 0, v2: int = 0):
     user = _user_or_redirect(request)
     if user is None:
@@ -352,7 +351,7 @@ async def get_diff(request: Request, doc_id: str, v1: int = 0, v2: int = 0):
 # --- JSONL Viewer API ---
 
 
-@app.get("/admin/api/documents/{doc_id}/jsonl/{filename}")
+@app.get("/api/documents/{doc_id}/jsonl/{filename}")
 async def get_jsonl_file(request: Request, doc_id: str, filename: str):
     user = _user_or_redirect(request)
     if user is None:
@@ -375,7 +374,7 @@ async def get_jsonl_file(request: Request, doc_id: str, filename: str):
 # --- Image Proxy ---
 
 
-@app.get("/admin/api/images/{doc_id}/{path:path}")
+@app.get("/api/images/{doc_id}/{path:path}")
 async def get_image(request: Request, doc_id: str, path: str):
     user = _user_or_redirect(request)
     if user is None:
@@ -405,11 +404,11 @@ async def get_image(request: Request, doc_id: str, path: str):
 # --- Upload ---
 
 
-@app.get("/admin/upload", response_class=HTMLResponse)
+@app.get("/upload", response_class=HTMLResponse)
 async def upload_page(request: Request):
     user = _user_or_redirect(request)
     if user is None:
-        return RedirectResponse(url="/admin/login", status_code=303)
+        return RedirectResponse(url="/login", status_code=303)
 
     return templates.TemplateResponse(
         "upload.html",
@@ -420,7 +419,7 @@ async def upload_page(request: Request):
     )
 
 
-@app.post("/admin/api/upload/presign")
+@app.post("/api/upload/presign")
 async def upload_presign(request: Request):
     user = _user_or_redirect(request)
     if user is None:
@@ -439,7 +438,7 @@ async def upload_presign(request: Request):
     return JSONResponse({"upload_url": url, "s3_key": f"uploads/{os.path.basename(filename)}"})
 
 
-@app.get("/admin/api/upload/status")
+@app.get("/api/upload/status")
 async def upload_status(request: Request):
     user = _user_or_redirect(request)
     if user is None:
@@ -452,7 +451,7 @@ async def upload_status(request: Request):
     return JSONResponse(statuses)
 
 
-@app.post("/admin/api/upload/reprocess-all")
+@app.post("/api/upload/reprocess-all")
 async def reprocess_all_docs(request: Request):
     user = _user_or_redirect(request)
     if user is None:
@@ -468,7 +467,7 @@ async def reprocess_all_docs(request: Request):
 # --- Bulk Actions ---
 
 
-@app.post("/admin/api/documents/bulk-delete")
+@app.post("/api/documents/bulk-delete")
 async def bulk_delete(request: Request):
     user = _user_or_redirect(request)
     if user is None:
@@ -496,7 +495,7 @@ async def bulk_delete(request: Request):
     return JSONResponse({"ok": True, "deleted": deleted})
 
 
-@app.post("/admin/api/documents/bulk-reprocess")
+@app.post("/api/documents/bulk-reprocess")
 async def bulk_reprocess(request: Request):
     user = _user_or_redirect(request)
     if user is None:
@@ -526,7 +525,7 @@ async def bulk_reprocess(request: Request):
     return JSONResponse({"ok": True, "triggered": triggered, "message": f"Reprocessing {triggered} document(s)"})
 
 
-@app.post("/admin/api/documents/bulk-reindex")
+@app.post("/api/documents/bulk-reindex")
 async def bulk_reindex(request: Request):
     user = _user_or_redirect(request)
     if user is None:
@@ -549,14 +548,6 @@ async def bulk_reindex(request: Request):
             triggered += 1
 
     return JSONResponse({"ok": True, "triggered": triggered, "message": f"Reindexing {triggered} document(s)"})
-
-
-# --- Root redirect ---
-
-
-@app.get("/")
-async def root_redirect():
-    return RedirectResponse(url="/admin/", status_code=303)
 
 
 def main():

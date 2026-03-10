@@ -8,9 +8,14 @@ output "open_webui_url" {
   value       = "https://${aws_apprunner_service.open_webui.service_url}"
 }
 
-output "upload_url" {
-  description = "Upload page URL"
-  value       = trimsuffix(aws_apigatewayv2_stage.default.invoke_url, "/")
+output "admin_url" {
+  description = "Admin UI URL"
+  value       = "https://admin.swetbot.ljn.io"
+}
+
+output "swetbot_url" {
+  description = "SwetBot URL"
+  value       = "https://swetbot.ljn.io"
 }
 
 output "docproc_function_name" {

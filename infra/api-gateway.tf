@@ -1,4 +1,4 @@
-# --- HTTP API Gateway (routes to RAG API + admin Lambdas) ---
+# --- HTTP API Gateway for RAG API ---
 
 resource "aws_apigatewayv2_api" "main" {
   name          = "${local.prefix}-api"
@@ -11,54 +11,7 @@ resource "aws_apigatewayv2_stage" "default" {
   auto_deploy = true
 }
 
-# --- Admin Lambda integration ---
-
-resource "aws_apigatewayv2_integration" "admin" {
-  api_id                 = aws_apigatewayv2_api.main.id
-  integration_type       = "AWS_PROXY"
-  integration_uri        = aws_lambda_function.admin.invoke_arn
-  payload_format_version = "2.0"
-}
-
-resource "aws_apigatewayv2_route" "admin_root" {
-  api_id    = aws_apigatewayv2_api.main.id
-  route_key = "GET /admin"
-  target    = "integrations/${aws_apigatewayv2_integration.admin.id}"
-}
-
-resource "aws_apigatewayv2_route" "admin_get" {
-  api_id    = aws_apigatewayv2_api.main.id
-  route_key = "GET /admin/{proxy+}"
-  target    = "integrations/${aws_apigatewayv2_integration.admin.id}"
-}
-
-resource "aws_apigatewayv2_route" "admin_post" {
-  api_id    = aws_apigatewayv2_api.main.id
-  route_key = "POST /admin/{proxy+}"
-  target    = "integrations/${aws_apigatewayv2_integration.admin.id}"
-}
-
-resource "aws_apigatewayv2_route" "admin_delete" {
-  api_id    = aws_apigatewayv2_api.main.id
-  route_key = "DELETE /admin/{proxy+}"
-  target    = "integrations/${aws_apigatewayv2_integration.admin.id}"
-}
-
-resource "aws_apigatewayv2_route" "root_redirect" {
-  api_id    = aws_apigatewayv2_api.main.id
-  route_key = "GET /"
-  target    = "integrations/${aws_apigatewayv2_integration.admin.id}"
-}
-
-resource "aws_lambda_permission" "apigw_admin" {
-  statement_id  = "AllowAPIGatewayInvoke"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.admin.function_name
-  principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_apigatewayv2_api.main.execution_arn}/*/*"
-}
-
-# --- RAG API Lambda integration ---
+# RAG API Lambda integration (default route)
 
 moved {
   from = aws_apigatewayv2_integration.chat
@@ -94,4 +47,66 @@ resource "aws_lambda_permission" "apigw_rag_api" {
   function_name = aws_lambda_function.rag_api.function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.main.execution_arn}/*/*"
+}
+
+# --- Removed: old admin routes on main API Gateway ---
+# These were moved to the dedicated admin API Gateway.
+
+removed {
+  from = aws_apigatewayv2_route.admin_root
+  lifecycle { destroy = true }
+}
+
+removed {
+  from = aws_apigatewayv2_route.admin_get
+  lifecycle { destroy = true }
+}
+
+removed {
+  from = aws_apigatewayv2_route.admin_post
+  lifecycle { destroy = true }
+}
+
+removed {
+  from = aws_apigatewayv2_route.admin_delete
+  lifecycle { destroy = true }
+}
+
+removed {
+  from = aws_apigatewayv2_route.root_redirect
+  lifecycle { destroy = true }
+}
+
+# --- HTTP API Gateway for Admin ---
+
+resource "aws_apigatewayv2_api" "admin" {
+  name          = "${local.prefix}-admin-api"
+  protocol_type = "HTTP"
+}
+
+resource "aws_apigatewayv2_stage" "admin" {
+  api_id      = aws_apigatewayv2_api.admin.id
+  name        = "$default"
+  auto_deploy = true
+}
+
+resource "aws_apigatewayv2_integration" "admin" {
+  api_id                 = aws_apigatewayv2_api.admin.id
+  integration_type       = "AWS_PROXY"
+  integration_uri        = aws_lambda_function.admin.invoke_arn
+  payload_format_version = "2.0"
+}
+
+resource "aws_apigatewayv2_route" "admin_default" {
+  api_id    = aws_apigatewayv2_api.admin.id
+  route_key = "$default"
+  target    = "integrations/${aws_apigatewayv2_integration.admin.id}"
+}
+
+resource "aws_lambda_permission" "apigw_admin" {
+  statement_id  = "AllowAdminAPIGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.admin.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.admin.execution_arn}/*/*"
 }

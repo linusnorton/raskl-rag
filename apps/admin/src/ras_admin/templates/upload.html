@@ -56,7 +56,7 @@ async function uploadFiles() {
     if (!file.name.toLowerCase().endsWith('.pdf')) { errors.push(`${file.name}: not a PDF`); continue; }
     if (file.size > MAX_SIZE) { errors.push(`${file.name}: exceeds 500 MB`); continue; }
     try {
-      const resp = await fetch('/admin/api/upload/presign', {
+      const resp = await fetch('/api/upload/presign', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({filename: file.name})
@@ -92,7 +92,7 @@ async function uploadFiles() {
 async function reprocessAll() {
   document.getElementById('message').innerHTML = '';
   try {
-    const resp = await fetch('/admin/api/upload/reprocess-all', {method: 'POST'});
+    const resp = await fetch('/api/upload/reprocess-all', {method: 'POST'});
     const data = await resp.json();
     if (!resp.ok) { showMsg(data.error || 'Failed', 'err'); return; }
     const filenames = data.filenames || [];
@@ -113,7 +113,7 @@ function startPolling() {
 
 async function pollStatus() {
   try {
-    const resp = await fetch('/admin/api/upload/status');
+    const resp = await fetch('/api/upload/status');
     if (!resp.ok) return;
     const statuses = await resp.json();
     const statusMap = {};

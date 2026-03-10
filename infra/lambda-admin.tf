@@ -19,7 +19,7 @@ resource "aws_lambda_function" "admin" {
 
       # Lambda Web Adapter
       AWS_LWA_INVOKE_MODE          = "buffered"
-      AWS_LWA_READINESS_CHECK_PATH = "/admin/login"
+      AWS_LWA_READINESS_CHECK_PATH = "/login"
       PORT                         = "8000"
 
       # uv cache
