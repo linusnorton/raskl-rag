@@ -60,6 +60,11 @@ resource "aws_ecr_lifecycle_policy" "docproc" {
   })
 }
 
+import {
+  to = aws_ecr_repository.admin
+  id = "raskl-admin"
+}
+
 resource "aws_ecr_repository" "admin" {
   name                 = "${local.prefix}-admin"
   image_tag_mutability = "MUTABLE"

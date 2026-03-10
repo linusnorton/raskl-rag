@@ -282,13 +282,6 @@ jobs:
             -var="rag_api_key=${{ secrets.CHAT_API_KEY }}" \
             aws_ecr_repository.rag_api raskl-rag-api 2>/dev/null || true
 
-          terraform import \
-            -var="neon_api_key=${{ secrets.NEON_API_KEY }}" \
-            -var="upload_password_hash=${{ secrets.UPLOAD_PASSWORD_HASH }}" \
-            -var="admin_secret_key=${{ secrets.ADMIN_SECRET_KEY }}" \
-            -var="rag_api_key=${{ secrets.CHAT_API_KEY }}" \
-            aws_ecr_repository.admin raskl-admin 2>/dev/null || true
-
       - name: Build db-init Lambda package
         if: needs.changes.outputs.infra == 'true'
         working-directory: infra
