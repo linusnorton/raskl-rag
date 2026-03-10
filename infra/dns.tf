@@ -84,17 +84,9 @@ resource "aws_route53_record" "swetbot" {
   records = [aws_apprunner_custom_domain_association.swetbot.dns_target]
 }
 
-# App Runner requires CNAME validation records
-resource "aws_route53_record" "swetbot_validation" {
-  for_each = {
-    for r in aws_apprunner_custom_domain_association.swetbot.certificate_validation_records : r.name => r
-  }
-
-  zone_id = data.aws_route53_zone.ljn_io.zone_id
-  name    = each.value.name
-  type    = each.value.type
-  ttl     = 300
-  records = [each.value.value]
-
-  allow_overwrite = true
+# App Runner certificate validation records.
+# After first apply, run `terraform apply` again to create these (values are only known after association).
+output "apprunner_validation_records" {
+  description = "App Runner certificate validation records — add to Route 53 if not auto-created"
+  value       = aws_apprunner_custom_domain_association.swetbot.certificate_validation_records
 }
