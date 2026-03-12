@@ -23,6 +23,7 @@ class RetrievedFigure:
     image_url: str
     thumb_url: str
     source_filename: str
+    asset_path: str = ""
 
 
 @dataclass
@@ -163,7 +164,10 @@ def retrieve(query: str, config: RAGConfig, top_k: int | None = None) -> list[Re
 
 
 def retrieve_contextual_figures(chunks: list[RetrievedChunk], config: RAGConfig) -> list[RetrievedFigure]:
-    """Retrieve figures on the same pages as the given chunks."""
+    """Retrieve figures on the same pages as the given chunks.
+
+    In local mode (no s3_bucket), filters out figures whose asset files don't exist on disk.
+    """
     doc_id_pages: set[tuple[str, int]] = set()
     for c in chunks:
         for p in range(c.start_page, c.end_page + 1):
@@ -189,18 +193,34 @@ def retrieve_contextual_figures(chunks: list[RetrievedChunk], config: RAGConfig)
             )
             rows = cur.fetchall()
 
-    return [
-        RetrievedFigure(
-            figure_id=r[0],
-            doc_id=r[1],
-            page_num=r[2],
-            caption=r[3],
-            image_url=f"{base}/v1/images/{r[0]}",
-            thumb_url=f"{base}/v1/images/{r[0]}?thumb=true",
-            source_filename=r[6],
-        )
-        for r in rows
-    ]
+    from pathlib import Path
+
+    is_local = not config.s3_bucket
+    data_dir = Path(config.data_dir)
+
+    figures = []
+    for r in rows:
+        figure_id, doc_id, page_num, caption, asset_path, thumb_path, source_filename = r
+
+        # In local mode, skip figures whose asset file doesn't exist
+        if is_local and asset_path:
+            local_path = data_dir / doc_id / asset_path
+            if not local_path.is_file():
+                log.debug("Skipping figure %s: asset not found at %s", figure_id, local_path)
+                continue
+
+        figures.append(RetrievedFigure(
+            figure_id=figure_id,
+            doc_id=doc_id,
+            page_num=page_num,
+            caption=caption,
+            image_url=f"{base}/v1/images/{figure_id}",
+            thumb_url=f"{base}/v1/images/{figure_id}?thumb=true",
+            source_filename=source_filename,
+            asset_path=asset_path or "",
+        ))
+
+    return figures
 
 
 _FIGURE_SEARCH_SQL = """\

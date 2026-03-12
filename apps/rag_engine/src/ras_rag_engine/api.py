@@ -17,7 +17,7 @@ from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from .agent import run_agent_streaming
-from .citations import renumber_response
+from .citations import extract_content, renumber_response, strip_llm_sources
 from .config import RAGConfig
 from .retriever import RetrievedChunk
 
@@ -195,11 +195,18 @@ async def _stream_response(
                 prev_text = partial_text
                 yield {"data": _build_chunk_event(completion_id, content=delta)}
 
-        # After streaming completes, send citation block as final content
-        final_with_citations = renumber_response(prev_text, all_chunks)
-        if len(final_with_citations) > len(prev_text):
-            citation_delta = final_with_citations[len(prev_text):]
-            yield {"data": _build_chunk_event(completion_id, content=citation_delta)}
+        # After streaming completes, check if the LLM generated its own sources section.
+        # If so, we can't un-send it — skip appending code-generated sources.
+        content = extract_content(prev_text)
+        clean = strip_llm_sources(content)
+        if len(clean) < len(content):
+            # LLM generated sources already streamed — skip code sources
+            log.info("LLM generated its own sources section; skipping code-generated sources")
+        else:
+            final_with_citations = renumber_response(prev_text, all_chunks)
+            if len(final_with_citations) > len(prev_text):
+                citation_delta = final_with_citations[len(prev_text):]
+                yield {"data": _build_chunk_event(completion_id, content=citation_delta)}
 
     except Exception as e:
         log.exception("Error during streaming")
@@ -237,6 +244,7 @@ async def get_image(
             row = cur.fetchone()
 
     if not row:
+        log.warning("Image 404: figure_id=%s not found in database", figure_id)
         raise HTTPException(status_code=404, detail="Figure not found")
 
     doc_id, asset_path, thumb_path, s3_prefix = row
@@ -259,6 +267,7 @@ async def get_image(
     # Local mode: serve from disk
     local_path = Path(config.data_dir) / doc_id / rel_path
     if not local_path.is_file():
+        log.warning("Image 404: figure_id=%s, doc_id=%s, path=%s", figure_id, doc_id, local_path)
         raise HTTPException(status_code=404, detail=f"Image file not found: {local_path}")
 
     from fastapi.responses import FileResponse

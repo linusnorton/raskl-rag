@@ -115,6 +115,16 @@ Only chunks that the LLM actually cited are included in the formatted source lis
 citations are detected (e.g. the LLM forgot to cite), all chunks are shown as a fallback.
 Citations inside `<think>` blocks are excluded — only citations in the visible response count.
 
+**Duplicate-source prevention:** The system prompt instructs the LLM not to generate its own
+Sources/References section. As a safety net, `strip_llm_sources()` detects and removes any
+LLM-generated bibliography before the code appends its own formatted sources. In the streaming
+path, if an LLM-generated sources section was already sent, the code skips appending a second one.
+
+**Duplicate-index collapsing:** When multiple context passages come from the same underlying chunk
+(same `chunk_id` + `start_page`), `collapse_duplicate_indices()` merges their in-text `[N]`
+markers to the same display number. This prevents the confusing case where `[1]`, `[2]`, `[3]`
+appear in text but Sources shows only 2 entries because two passages were from the same chunk.
+
 **Source format:**
 ```
 ---
@@ -269,6 +279,12 @@ The `?thumb=true` query parameter serves the thumbnail instead.
 `/v1/images/{id}`) so that Open WebUI (running on a different domain) can render `<img>` tags.
 Browser `<img>` tags cannot send `Authorization: Bearer` headers, which is why the image
 endpoint is unauthenticated.
+
+**Figure filtering:** Contextual figures with empty or generic captions (e.g. "Figure on p.30")
+are excluded from the LLM context. In local mode, figures whose asset files don't exist on disk
+are also filtered out to prevent 404s. The image annotation no longer says "(include in response)"
+— the LLM decides which images are relevant based on the system prompt guidance to briefly
+introduce each image and skip generic ones.
 
 **Why no VL descriptions:** Captions extracted by docproc are sufficient for search. Adding
 VL-generated descriptions would increase processing cost and latency without clear retrieval

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import warnings
 
 with warnings.catch_warnings():
@@ -146,8 +147,11 @@ def format_chunks_for_context(
             for fig in page_figures.get((c.doc_id, p), []):
                 if fig.figure_id not in seen_figs:
                     seen_figs.add(fig.figure_id)
-                    caption = fig.caption or f"Figure on p.{fig.page_num}"
-                    chunk_text += f"\n\nAvailable image (include in response): ![{caption}]({fig.image_url})"
+                    caption = fig.caption or ""
+                    # Skip figures with empty or generic captions
+                    if not caption or re.match(r"^Figure on p\.\d+$", caption):
+                        continue
+                    chunk_text += f"\n\nAvailable image: ![{caption}]({fig.image_url})"
 
         parts.append(chunk_text)
     return "\n\n".join(parts)

@@ -41,6 +41,32 @@ def extract_content(text: str) -> str:
     return re.sub(r'<think>.*?</think>\s*', '', text, flags=re.DOTALL)
 
 
+# Patterns that signal an LLM-generated sources/references/bibliography section.
+# Matches optional leading `---\n` + optional bold `**` + keyword + optional bold + colon + newline.
+_LLM_SOURCES_RE = re.compile(
+    r'\n+(?:---\n)?'
+    r'\*{0,2}(?:Sources?|References|Bibliography):?\*{0,2}:?\s*\n',
+    re.IGNORECASE,
+)
+
+
+def strip_llm_sources(text: str) -> str:
+    """Remove any LLM-generated Sources/References/Bibliography section from the end of the response.
+
+    This is a safety net for when the LLM ignores the system prompt instruction not to generate
+    a bibliography. The code-generated Sources block is appended separately by format_citations().
+    Only strips if the match is past the first 30% of the text to avoid false positives
+    (e.g. a sentence like "The sources indicate that...").
+    """
+    m = _LLM_SOURCES_RE.search(text)
+    if not m:
+        return text
+    # Only strip if the matched section is past the first 30% of the text
+    if m.start() < len(text) * 0.3:
+        return text
+    return text[:m.start()].rstrip()
+
+
 def make_index_map(text: str) -> dict[int, int]:
     """Map original [N] citation indices to consecutive display numbers (in order of first appearance).
 
@@ -52,6 +78,47 @@ def make_index_map(text: str) -> dict[int, int]:
             if orig not in seen:
                 seen[orig] = len(seen) + 1
     return seen
+
+
+def collapse_duplicate_indices(
+    index_map: dict[int, int],
+    all_chunks: list[RetrievedChunk],
+) -> dict[int, int]:
+    """Collapse indices that point to the same (chunk_id, start_page) to the same display number.
+
+    When multiple context passages come from the same underlying chunk, the LLM may cite them
+    with different [N] markers. This function merges them so they share a single display number,
+    then renumbers the remaining display numbers consecutively.
+    """
+    if not index_map:
+        return index_map
+
+    # Map each original index to its chunk identity
+    chunk_key_for_orig: dict[int, tuple[str, int]] = {}
+    for orig in index_map:
+        if 1 <= orig <= len(all_chunks):
+            c = all_chunks[orig - 1]
+            chunk_key_for_orig[orig] = (c.chunk_id, c.start_page)
+
+    # Group original indices by chunk identity, assign first-seen display number
+    key_to_display: dict[tuple[str, int], int] = {}
+    collapsed: dict[int, int] = {}
+    next_display = 1
+
+    # Iterate in display-number order (i.e. order of first appearance in text)
+    for orig in sorted(index_map, key=lambda o: index_map[o]):
+        key = chunk_key_for_orig.get(orig)
+        if key is None:
+            # Index doesn't map to a known chunk — keep its display number
+            collapsed[orig] = next_display
+            next_display += 1
+            continue
+        if key not in key_to_display:
+            key_to_display[key] = next_display
+            next_display += 1
+        collapsed[orig] = key_to_display[key]
+
+    return collapsed
 
 
 def renumber_text(text: str, mapping: dict[int, int]) -> str:
@@ -145,11 +212,19 @@ def format_citations(chunks: list[RetrievedChunk], response_text: str = "", inde
 def renumber_response(partial_text: str, all_chunks: list[RetrievedChunk]) -> str:
     """Renumber citations in a complete response and append formatted sources."""
     content = extract_content(partial_text)
+    # Strip any LLM-generated sources section before processing citations
+    content = strip_llm_sources(content)
     mapping = make_index_map(content)
+    # Collapse duplicate chunk references to the same display number
+    mapping = collapse_duplicate_indices(mapping, all_chunks)
     if mapping:
         renumbered = renumber_text(content, mapping)
         think_match = re.match(r'<think>.*?</think>\s*', partial_text, re.DOTALL)
         partial_text = (think_match.group(0) if think_match else '') + renumbered
+    else:
+        # Still need to apply stripped content (no citations, but sources may have been stripped)
+        think_match = re.match(r'<think>.*?</think>\s*', partial_text, re.DOTALL)
+        partial_text = (think_match.group(0) if think_match else '') + content
     # Pass original content (pre-renumber) so cited filter uses original LLM chunk indices
     citations = format_citations(all_chunks, content, index_map=mapping)
     if citations and partial_text:

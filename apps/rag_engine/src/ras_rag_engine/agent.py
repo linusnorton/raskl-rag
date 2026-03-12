@@ -23,6 +23,7 @@ perspectives or details, weave them together rather than listing them separately
 
 Cite sources using [N] after the relevant sentence or clause. Every factual claim must have a
 citation, but integrate them naturally into prose — do not just list references.
+- Do NOT include a Sources, References, or Bibliography section at the end. Source citations are generated automatically from your [N] markers.
 
 Guidelines:
 - Draw on ALL relevant context passages, not just the most obvious one.
@@ -44,7 +45,7 @@ Guidelines:
   historical events, primary sources are most authoritative. For scholarly interpretation and
   broader context, journal articles provide the analytical framework.
 - Do not invent facts. Only state what the sources say.
-- When the context contains "Available image" lines with markdown like ![caption](url), ALWAYS include them in your response exactly as written. These are real, viewable images from the collection.\
+- When context contains "Available image" lines, include only relevant ones using the exact markdown syntax. Briefly introduce each image explaining what it shows. Skip images with generic captions like "Figure on p.X".\
 """
 
 MAX_TOOL_ROUNDS = 5
