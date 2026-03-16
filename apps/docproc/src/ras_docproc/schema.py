@@ -29,6 +29,15 @@ class BBox(BaseModel):
         return self.width * self.height
 
 
+class MetadataSource(BaseModel):
+    """Provenance tracking for a metadata field."""
+
+    field: str
+    source: str  # e.g. "pdf_metadata", "cover_page_regex", "llm_extraction", "crossref", "openlibrary", "web_search"
+    confidence: float = 1.0
+    raw_value: str = ""
+
+
 class DocumentRecord(BaseModel):
     """Document-level metadata."""
 
@@ -48,6 +57,14 @@ class DocumentRecord(BaseModel):
     doi: str | None = None
     url: str | None = None
     document_type: str | None = None
+    abstract: str | None = None
+    keywords: list[str] = Field(default_factory=list)
+    language: str | None = None
+    isbn: str | None = None
+    issn: str | None = None
+    series: str | None = None
+    description: str | None = None
+    metadata_sources: list[MetadataSource] = Field(default_factory=list)
     page_offset: int = 0
     extraction_version: str = "0.1.0"
     config_hash: str | None = None

@@ -42,6 +42,9 @@ class RetrievedChunk:
     publication: str | None = None
     document_type: str | None = None
     page_offset: int = 0
+    editor: str | None = None
+    abstract: str | None = None
+    description: str | None = None
 
 
 def embed_query(query: str, config: RAGConfig) -> list[float]:
@@ -69,7 +72,9 @@ text_results AS (
            ROW_NUMBER() OVER (ORDER BY ts_rank(
                setweight(to_tsvector('english', c.text), 'B')
                || setweight(to_tsvector('english',
-                   coalesce(d.title, '') || ' ' || coalesce(d.author, '')), 'A'),
+                   coalesce(d.title, '') || ' ' || coalesce(d.author, '') || ' '
+                   || coalesce(d.abstract, '') || ' ' || coalesce(d.description, '') || ' '
+                   || coalesce(array_to_string(d.keywords, ' '), '')), 'A'),
                %(tsquery)s::tsquery) DESC) AS trank
     FROM chunks c
     JOIN documents d ON c.doc_id = d.doc_id
@@ -89,7 +94,8 @@ fused AS (
     WHERE t.chunk_id NOT IN (SELECT chunk_id FROM vector_results)
 )
 SELECT f.chunk_id, f.doc_id, f.text, f.start_page, f.end_page, f.section_heading,
-       d.source_filename, d.title, d.author, d.year, d.page_offset, d.publication, d.document_type, f.rrf_score AS score
+       d.source_filename, d.title, d.author, d.year, d.page_offset, d.publication, d.document_type,
+       f.rrf_score AS score, d.editor, d.abstract, d.description
 FROM fused f
 JOIN documents d ON f.doc_id = d.doc_id
 ORDER BY f.rrf_score DESC
@@ -154,6 +160,9 @@ def retrieve(query: str, config: RAGConfig, top_k: int | None = None) -> list[Re
             publication=row[11],
             document_type=row[12],
             score=row[13],
+            editor=row[14],
+            abstract=row[15],
+            description=row[16],
         ))
 
     if config.rerank_enabled and chunks:

@@ -41,9 +41,17 @@ class DocMeta(BaseModel):
     source_filename: str
     title: str | None = None
     author: str | None = None
+    editor: str | None = None
     year: int | None = None
     publication: str | None = None
     document_type: str | None = None
+    abstract: str | None = None
+    keywords: list[str] = Field(default_factory=list)
+    language: str | None = None
+    isbn: str | None = None
+    issn: str | None = None
+    series: str | None = None
+    description: str | None = None
     page_offset: int = 0
     sha256_pdf: str
     s3_prefix: str = ""
