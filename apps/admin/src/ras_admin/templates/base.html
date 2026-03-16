@@ -103,6 +103,10 @@
     /* Checkbox */
     input[type="checkbox"] { width: auto; margin-right: 8px; }
 
+    /* Easter egg animations */
+    @keyframes swet-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    @keyframes swet-pulse { 0%, 100% { scale: 1; } 50% { scale: 1.15; } }
+
     /* Figure gallery */
     .figure-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
     .figure-card { border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; }
@@ -128,6 +132,36 @@
   <main>
     {% block content %}{% endblock %}
   </main>
+  <!-- Easter egg overlay -->
+  <div id="swet-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:9999; cursor:pointer; justify-content:center; align-items:center;">
+    <img id="swet-big" src="/static/logo.png" style="width:420px; height:420px; border-radius:50%; border:4px solid #94a3b8; object-fit:cover; animation: swet-spin 2s linear infinite, swet-pulse 1.5s ease-in-out infinite;">
+  </div>
+  <script>
+  (function() {
+    var overlay = document.getElementById('swet-overlay');
+    var bigImg = document.getElementById('swet-big');
+    var logos = ['/static/logo.png', '/static/logo2.png'];
+    var idx = 0;
+    var timer = null;
+    var navLogo = document.querySelector('nav .brand img');
+    if (!navLogo) return;
+    navLogo.style.cursor = 'pointer';
+    navLogo.addEventListener('click', function(e) {
+      e.preventDefault();
+      idx = 0;
+      bigImg.src = logos[idx];
+      overlay.style.display = 'flex';
+      timer = setInterval(function() {
+        idx = 1 - idx;
+        bigImg.src = logos[idx];
+      }, 800);
+    });
+    overlay.addEventListener('click', function() {
+      overlay.style.display = 'none';
+      if (timer) { clearInterval(timer); timer = null; }
+    });
+  })();
+  </script>
   {% block extra_scripts %}{% endblock %}
 </body>
 </html>
