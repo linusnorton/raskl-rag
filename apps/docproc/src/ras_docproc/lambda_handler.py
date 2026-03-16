@@ -175,7 +175,23 @@ def _upload_versioned_output(bucket: str, doc_id: str, data_dir: Path, tmpdir: P
     version = _get_next_version(bucket, doc_id)
     s3_prefix = f"processed/{doc_id}/v{version}/"
 
-    # Upload all JSONL files
+    # Upload _meta.json FIRST — the chunker Lambda is triggered by documents.jsonl
+    # and needs _meta.json to resolve the original filename for status tracking.
+    meta = {
+        "version": version,
+        "backend": "qwen3vl",
+        "doc_id": doc_id,
+        "filename": filename,
+    }
+    s3.put_object(
+        Bucket=bucket,
+        Key=f"{s3_prefix}_meta.json",
+        Body=json.dumps(meta, default=str),
+        ContentType="application/json",
+    )
+    logger.info("Uploaded %s_meta.json", s3_prefix)
+
+    # Upload all JSONL files (documents.jsonl triggers the chunker via S3 notification)
     for f in doc_dir.iterdir():
         if f.is_file():
             s3_key = f"{s3_prefix}{f.name}"
@@ -191,20 +207,6 @@ def _upload_versioned_output(bucket: str, doc_id: str, data_dir: Path, tmpdir: P
                 content_type = "image/jpeg" if asset.suffix in (".jpg", ".jpeg") else "image/png"
                 s3.upload_file(str(asset), bucket, s3_key, ExtraArgs={"ContentType": content_type})
                 logger.info("Uploaded asset %s", s3_key)
-
-    # Write version metadata
-    meta = {
-        "version": version,
-        "backend": "qwen3vl",
-        "doc_id": doc_id,
-        "filename": filename,
-    }
-    s3.put_object(
-        Bucket=bucket,
-        Key=f"{s3_prefix}_meta.json",
-        Body=json.dumps(meta, default=str),
-        ContentType="application/json",
-    )
 
     # Diff against previous version and email
     _diff_and_notify(bucket, doc_id, version, doc_dir, tmpdir)
