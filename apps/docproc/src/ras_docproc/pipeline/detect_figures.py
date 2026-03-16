@@ -53,6 +53,18 @@ def detect_figures(
     skipped_scans = 0
     rendered_scans = 0
     rendered_scan_pages: set[int] = set()  # Track pages already rendered to avoid duplicates
+
+    # Pre-check which pages have non-fullpage images (i.e. real embedded figures).
+    # If a page has real figures, don't render the full-page scan — the real figures are better.
+    pages_with_real_images: set[int] = set()
+    for page_num, page_data in mupdf_data.items():
+        page_area = page_data.width * page_data.height
+        for img_info in page_data.images:
+            if page_area > 0 and img_info.bbox:
+                if img_info.bbox.area < FULL_PAGE_AREA_THRESHOLD * page_area:
+                    pages_with_real_images.add(page_num)
+                    break
+
     for page_num, page_data in mupdf_data.items():
         page_area = page_data.width * page_data.height
         for img_idx, img_info in enumerate(page_data.images):
@@ -60,9 +72,14 @@ def detect_figures(
             if page_area > 0 and img_info.bbox:
                 img_area = img_info.bbox.area
                 if img_area >= FULL_PAGE_AREA_THRESHOLD * page_area:
-                    # If the VL model detected a figure on this page, render it instead of skipping
-                    # (only once per page to avoid duplicates from multiple scan images)
-                    if page_num in vl_figure_pages and page_num not in rendered_scan_pages:
+                    # If the VL model detected a figure on this page AND there are no
+                    # real embedded images, render the scan as a figure.
+                    # Skip if the page already has real images — they'll be extracted normally.
+                    if (
+                        page_num in vl_figure_pages
+                        and page_num not in rendered_scan_pages
+                        and page_num not in pages_with_real_images
+                    ):
                         rendered_scan_pages.add(page_num)
                         rotation = page_rotations.get(page_num, 0)
                         rendered_fig = _render_scan_page_figure(

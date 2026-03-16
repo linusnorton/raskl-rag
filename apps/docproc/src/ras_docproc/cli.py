@@ -223,7 +223,7 @@ def _run_pipeline(pdf_path: Path, out_dir: Path, max_pages: int | None, page_ran
 
     # Step 15: Caption detection
     progress.set_postfix_str("Captions")
-    figures, plates = detect_captions(figures, blocks_by_page, doc_id)
+    figures, plates = detect_captions(figures, blocks_by_page, doc_id, mupdf_data)
     progress.update(1)
 
     # Step 16: Export

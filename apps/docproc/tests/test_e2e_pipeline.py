@@ -130,7 +130,7 @@ def _run_full_pipeline(
     figures = detect_figures(mupdf_data, config, doc_id, page_rotations, vl_figure_pages)
 
     # 15. Captions
-    figures, plates = detect_captions(figures, blocks_by_page, doc_id)
+    figures, plates = detect_captions(figures, blocks_by_page, doc_id, mupdf_data)
 
     # 16. Export
     doc_dir = export_all(
