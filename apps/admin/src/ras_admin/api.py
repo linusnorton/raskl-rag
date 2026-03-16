@@ -11,6 +11,7 @@ from typing import Any
 import uvicorn
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 # Load .env for local development (Lambda gets credentials from IAM role)
@@ -34,6 +35,14 @@ app = FastAPI(lifespan=lifespan)
 app.state.config = config
 
 templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "templates"))
+
+_static_dir = os.path.join(os.path.dirname(__file__), "static")
+app.mount("/static", StaticFiles(directory=_static_dir), name="static")
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return FileResponse(os.path.join(_static_dir, "favicon.ico"))
 
 
 def _user_or_redirect(request: Request) -> dict[str, Any] | None:
