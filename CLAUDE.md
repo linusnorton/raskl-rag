@@ -130,6 +130,10 @@ model, changed prompt), update the relevant README to record:
 - Why it was changed (what problem it solved or what was observed)
 - Any alternatives considered
 
+## Environment
+
+AWS credentials and database DSN are in `.env` at the repo root. Source it before running AWS CLI commands or scripts that need cloud access.
+
 ## Coding Conventions
 
 - Python 3.11+
