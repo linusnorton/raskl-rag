@@ -5,6 +5,7 @@
 <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 20px;">
   <a href="/documents" style="color: #64748b;">&larr; Documents</a>
   <h1 style="font-size: 1.3em; flex:1;">{{ doc.source_filename }}</h1>
+  <a class="btn btn-secondary" href="/api/documents/{{ doc.doc_id }}/download" target="_blank">Download PDF</a>
   <button class="btn btn-primary" onclick="reprocess()">Reprocess</button>
   <button class="btn btn-secondary" onclick="reindex()">Reindex</button>
   <button class="btn btn-danger" onclick="deleteDoc()">Delete</button>

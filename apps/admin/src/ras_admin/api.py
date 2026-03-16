@@ -207,6 +207,29 @@ async def document_detail(request: Request, doc_id: str):
 # --- Document Actions (API endpoints) ---
 
 
+@app.get("/api/documents/{doc_id}/download")
+async def download_document(request: Request, doc_id: str):
+    user = _user_or_redirect(request)
+    if user is None:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    if not config.s3_bucket:
+        return JSONResponse({"error": "S3 not configured"}, status_code=400)
+
+    conn = db.get_connection(config)
+    try:
+        doc = db.get_document(conn, doc_id)
+    finally:
+        conn.close()
+
+    if doc is None:
+        return JSONResponse({"error": "Document not found"}, status_code=404)
+
+    s3_client = s3.get_client()
+    s3_key = f"uploads/{doc['source_filename']}"
+    url = s3.presign_get(s3_client, config.s3_bucket, s3_key)
+    return RedirectResponse(url=url, status_code=302)
+
+
 @app.post("/api/documents/{doc_id}/reprocess")
 async def reprocess_document(request: Request, doc_id: str):
     user = _user_or_redirect(request)
