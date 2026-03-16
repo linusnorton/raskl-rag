@@ -26,25 +26,33 @@ def detect_figures(
     config: PipelineConfig,
     doc_id: str,
     page_rotations: dict[int, int] | None = None,
+    vl_figure_pages: dict[int, list[str]] | None = None,
 ) -> list[FigureRecord]:
     """Extract embedded images and produce normalized JPG + thumbnails.
 
     For pages with suggested rotation, renders the page and rotates the clip.
+    For scanned PDFs where the VL model detected illustrations on a page,
+    renders the full page as a figure instead of skipping it.
 
     Args:
         mupdf_data: Per-page MuPDF extraction data.
         config: Pipeline configuration.
         doc_id: Document ID.
         page_rotations: Optional dict of page_num -> suggested_rotation_cw.
+        vl_figure_pages: Optional dict of page_num -> list of figure descriptions
+            detected by the VL model (from ![Figure](...) tags).
 
     Returns:
         List of FigureRecord.
     """
     assets_dir = ensure_dir(config.out_dir / "out" / doc_id / "assets")
     page_rotations = page_rotations or {}
+    vl_figure_pages = vl_figure_pages or {}
     figures: list[FigureRecord] = []
 
     skipped_scans = 0
+    rendered_scans = 0
+    rendered_scan_pages: set[int] = set()  # Track pages already rendered to avoid duplicates
     for page_num, page_data in mupdf_data.items():
         page_area = page_data.width * page_data.height
         for img_idx, img_info in enumerate(page_data.images):
@@ -52,7 +60,19 @@ def detect_figures(
             if page_area > 0 and img_info.bbox:
                 img_area = img_info.bbox.area
                 if img_area >= FULL_PAGE_AREA_THRESHOLD * page_area:
-                    skipped_scans += 1
+                    # If the VL model detected a figure on this page, render it instead of skipping
+                    # (only once per page to avoid duplicates from multiple scan images)
+                    if page_num in vl_figure_pages and page_num not in rendered_scan_pages:
+                        rendered_scan_pages.add(page_num)
+                        rotation = page_rotations.get(page_num, 0)
+                        rendered_fig = _render_scan_page_figure(
+                            config.pdf_path, page_num, assets_dir, doc_id, vl_figure_pages[page_num], rotation,
+                        )
+                        if rendered_fig:
+                            figures.append(rendered_fig)
+                            rendered_scans += 1
+                    else:
+                        skipped_scans += 1
                     continue
 
             # Save original image bytes
@@ -106,8 +126,100 @@ def detect_figures(
 
     if skipped_scans > 0:
         logger.info("Skipped %d full-page scan images", skipped_scans)
+    if rendered_scans > 0:
+        logger.info("Rendered %d full-page scans as figures (VL-detected illustrations)", rendered_scans)
     logger.info("Extracted %d figures across %d pages", len(figures), len(mupdf_data))
     return figures
+
+
+def _parse_vl_rotation(descriptions: list[str]) -> tuple[list[str], int]:
+    """Parse rotation hints from VL figure descriptions.
+
+    Descriptions may end with |rotate90cw or |rotate90ccw.
+    Returns (clean_descriptions, rotation_cw).
+    """
+    import re
+
+    clean = []
+    rotation = 0
+    for desc in descriptions:
+        m = re.search(r"\|(rotate90cw|rotate90ccw)\s*$", desc, re.IGNORECASE)
+        if m:
+            if m.group(1).lower() == "rotate90cw":
+                rotation = 90
+            else:
+                rotation = 270
+            desc = desc[: m.start()].rstrip()
+        clean.append(desc)
+    return clean, rotation
+
+
+def _render_scan_page_figure(
+    pdf_path: Path,
+    page_num: int,
+    assets_dir: Path,
+    doc_id: str,
+    descriptions: list[str],
+    rotation_cw: int = 0,
+) -> FigureRecord | None:
+    """Render a full-page scan as a figure when the VL model detected an illustration.
+
+    Args:
+        rotation_cw: Clockwise rotation from the rotation detection stage. Applied to
+            correct sideways illustrations in scanned PDFs.
+    """
+    import fitz
+
+    try:
+        # Parse rotation hints from VL descriptions (e.g. "desc|rotate90cw")
+        clean_descs, vl_rotation = _parse_vl_rotation(descriptions)
+
+        # Use rotation detection stage rotation first; fall back to VL hint
+        effective_rotation = rotation_cw if rotation_cw != 0 else vl_rotation
+
+        doc = fitz.open(str(pdf_path))
+        page = doc[page_num - 1]
+        pix = page.get_pixmap(dpi=200)
+        img_bytes = pix.tobytes("png")
+        doc.close()
+
+        pil_img = Image.open(io.BytesIO(img_bytes))
+        if pil_img.mode not in ("RGB", "L"):
+            pil_img = pil_img.convert("RGB")
+
+        # Apply rotation to correct sideways illustrations
+        if effective_rotation != 0:
+            pil_img = pil_img.rotate(-effective_rotation, expand=True)
+            logger.info("Rotated scan page %d by %d° CW", page_num, effective_rotation)
+
+        jpg_path = assets_dir / f"p{page_num}_scan_figure.jpg"
+        pil_img.save(str(jpg_path), "JPEG", quality=90)
+
+        thumb = pil_img.copy()
+        thumb.thumbnail(THUMB_SIZE)
+        thumb_path = assets_dir / f"p{page_num}_scan_figure_thumb.jpg"
+        thumb.save(str(thumb_path), "JPEG", quality=80)
+
+        sha256 = hashlib.sha256(jpg_path.read_bytes()).hexdigest()
+        fig_id = make_block_id(doc_id, page_num, "scan_figure", "figure", sha256[:16])
+
+        caption = "; ".join(clean_descs)
+
+        return FigureRecord(
+            figure_id=fig_id,
+            doc_id=doc_id,
+            page_num_1=page_num,
+            figure_index_on_page=0,
+            asset_jpg_path=str(jpg_path),
+            asset_thumb_path=str(thumb_path),
+            asset_sha256=sha256,
+            caption_text_raw=caption,
+            derived_from="vl_detected_scan",
+            applied_rotation_cw=effective_rotation,
+        )
+    except Exception:
+        logger.warning("Failed to render scan page %d as figure", page_num, exc_info=True)
+        return None
 
 
 def _render_rotated_page(

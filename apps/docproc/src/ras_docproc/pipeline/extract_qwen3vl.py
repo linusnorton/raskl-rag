@@ -125,12 +125,17 @@ def _parse_markdown_to_blocks(
     page_height: float,
     doc_id: str,
     page_num: int,
-) -> list[TextBlockRecord]:
+) -> tuple[list[TextBlockRecord], list[str]]:
     """Parse Markdown response into TextBlockRecords.
 
     No bounding boxes available — use full-page bbox for all blocks.
+
+    Returns:
+        Tuple of (blocks, figure_descriptions). figure_descriptions is a list of
+        alt-text strings from ![Figure](...) tags found on this page.
     """
     blocks: list[TextBlockRecord] = []
+    figure_descriptions: list[str] = []
     full_bbox = BBox(x0=0, y0=0, x1=page_width, y1=page_height)
 
     # Split into sections: main content and footnotes (separated by ---)
@@ -144,6 +149,16 @@ def _parse_markdown_to_blocks(
     for paragraph in re.split(r"\n{2,}", main_text):
         paragraph = paragraph.strip()
         if not paragraph:
+            continue
+
+        # Detect ![Figure](description) or ![alt](url) image tags from VL model
+        # Description may end with |rotate90cw or |rotate90ccw for rotation
+        fig_match = re.match(r"^!\[([^\]]*)\]\(([^)]*)\)\s*$", paragraph)
+        if fig_match:
+            desc = fig_match.group(2) or fig_match.group(1)
+            # Filter out false positives: blank pages, blemishes, etc.
+            if desc and not re.search(r"\bblank\b", desc, re.IGNORECASE):
+                figure_descriptions.append(desc)
             continue
 
         # Determine block type
@@ -214,7 +229,7 @@ def _parse_markdown_to_blocks(
             )
             reading_order += 1
 
-    return blocks
+    return blocks, figure_descriptions
 
 
 def _process_page_bedrock(
@@ -224,8 +239,8 @@ def _process_page_bedrock(
     img_bytes: bytes,
     page_width: float,
     page_height: float,
-) -> tuple[int, list[TextBlockRecord]]:
-    """Call Bedrock and parse response for a single page. Returns (page_num, blocks)."""
+) -> tuple[int, list[TextBlockRecord], list[str]]:
+    """Call Bedrock and parse response for a single page. Returns (page_num, blocks, figure_descriptions)."""
     markdown = _call_bedrock(
         config.bedrock_region,
         config.bedrock_ocr_model_id,
@@ -235,14 +250,18 @@ def _process_page_bedrock(
     )
     logger.debug("Qwen3 VL: page %d response length %d chars", page_num, len(markdown))
 
-    blocks = _parse_markdown_to_blocks(markdown, page_width, page_height, doc_id, page_num)
-    return page_num, blocks
+    blocks, figure_descriptions = _parse_markdown_to_blocks(markdown, page_width, page_height, doc_id, page_num)
+    return page_num, blocks, figure_descriptions
 
 
-def extract_with_qwen3vl(config: PipelineConfig, doc_id: str) -> dict[int, list[TextBlockRecord]]:
+def extract_with_qwen3vl(
+    config: PipelineConfig, doc_id: str,
+) -> tuple[dict[int, list[TextBlockRecord]], dict[int, list[str]]]:
     """Extract structured text blocks from PDF using Bedrock Qwen3 VL.
 
-    Returns a dict mapping page_num_1 -> list of TextBlockRecord.
+    Returns a tuple of:
+        - dict mapping page_num_1 -> list of TextBlockRecord
+        - dict mapping page_num_1 -> list of figure descriptions (from ![Figure](...) tags)
 
     Page rendering (PyMuPDF) is done sequentially to avoid segfaults with
     certain PDFs under concurrent fitz access. Bedrock API calls are then
@@ -280,6 +299,7 @@ def extract_with_qwen3vl(config: PipelineConfig, doc_id: str) -> dict[int, list[
     # Parallelize Bedrock API calls (I/O-bound)
     t0 = time.time()
     blocks_by_page: dict[int, list[TextBlockRecord]] = {}
+    figures_by_page: dict[int, list[str]] = {}
 
     with ThreadPoolExecutor(max_workers=config.qwen3vl_max_workers) as executor:
         futures = {
@@ -292,15 +312,23 @@ def extract_with_qwen3vl(config: PipelineConfig, doc_id: str) -> dict[int, list[
         for future in as_completed(futures):
             page_num = futures[future]
             try:
-                pn, blocks = future.result()
+                pn, blocks, fig_descs = future.result()
                 if blocks:
                     blocks_by_page[pn] = blocks
-                logger.info("Qwen3 VL: page %d → %d blocks", pn, len(blocks))
+                if fig_descs:
+                    figures_by_page[pn] = fig_descs
+                logger.info("Qwen3 VL: page %d → %d blocks, %d figures", pn, len(blocks), len(fig_descs))
             except Exception:
                 logger.exception("Qwen3 VL: failed on page %d", page_num)
     bedrock_time = time.time() - t0
     logger.info("Qwen3 VL: Bedrock calls for %d pages in %.1fs (max_workers=%d)", len(pages_to_process), bedrock_time, config.qwen3vl_max_workers)
 
     total_blocks = sum(len(v) for v in blocks_by_page.values())
+    if figures_by_page:
+        logger.info(
+            "Qwen3 VL: detected figures on %d pages: %s",
+            len(figures_by_page),
+            sorted(figures_by_page.keys()),
+        )
     logger.info("Qwen3 VL extracted %d blocks across %d pages", total_blocks, len(blocks_by_page))
-    return blocks_by_page
+    return blocks_by_page, figures_by_page

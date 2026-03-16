@@ -51,7 +51,7 @@ def _run_full_pipeline(
     doc_id = document.doc_id
 
     # 2. Qwen3 VL extraction
-    blocks_by_page = extract_with_qwen3vl(config, doc_id)
+    blocks_by_page, vl_figure_pages = extract_with_qwen3vl(config, doc_id)
 
     # 3. MuPDF extraction
     mupdf_data = extract_with_mupdf(config)
@@ -127,7 +127,7 @@ def _run_full_pipeline(
     page_records, page_rotations = detect_rotation(mupdf_data, page_records)
 
     # 14. Figures
-    figures = detect_figures(mupdf_data, config, doc_id, page_rotations)
+    figures = detect_figures(mupdf_data, config, doc_id, page_rotations, vl_figure_pages)
 
     # 15. Captions
     figures, plates = detect_captions(figures, blocks_by_page, doc_id)

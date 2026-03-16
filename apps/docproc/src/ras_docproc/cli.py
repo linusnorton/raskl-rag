@@ -96,7 +96,7 @@ def _run_pipeline(pdf_path: Path, out_dir: Path, max_pages: int | None, page_ran
 
     # Step 2: Text extraction (Qwen3 VL via Bedrock)
     progress.set_postfix_str("Qwen3 VL")
-    blocks_by_page = extract_with_qwen3vl(config, doc_id)
+    blocks_by_page, vl_figure_pages = extract_with_qwen3vl(config, doc_id)
     progress.update(1)
 
     # Step 3: MuPDF extraction (also extracts PDF metadata)
@@ -157,8 +157,9 @@ def _run_pipeline(pdf_path: Path, out_dir: Path, max_pages: int | None, page_ran
         for blocks in blocks_by_page.values():
             for block in blocks:
                 block.page_num_1 = block.page_num_1 + offset
-        # Re-key page_heights
+        # Re-key page_heights and vl_figure_pages
         page_heights = {pn + offset: h for pn, h in page_heights.items()}
+        vl_figure_pages = {pn + offset: descs for pn, descs in vl_figure_pages.items()}
         # Adjust page_records
         for pr in page_records:
             pr.page_num_1 = pr.page_num_1 + offset
@@ -217,7 +218,7 @@ def _run_pipeline(pdf_path: Path, out_dir: Path, max_pages: int | None, page_ran
 
     # Step 14: Figure detection
     progress.set_postfix_str("Figures")
-    figures = detect_figures(mupdf_data, config, doc_id, page_rotations)
+    figures = detect_figures(mupdf_data, config, doc_id, page_rotations, vl_figure_pages)
     progress.update(1)
 
     # Step 15: Caption detection

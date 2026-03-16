@@ -56,7 +56,13 @@ into a single block of text.
 - If the page has footnotes (small text at the bottom, often after a horizontal rule), \
 separate them with --- and format each as a numbered line: 1. footnote text
 - Convert superscript footnote references in body text to ^N notation (e.g. ^1, ^23).
-- Do NOT describe images or figures — skip them entirely.
+- For images, illustrations, maps, plates, engravings, or figures on the page, emit a single line: \
+![Figure](brief description). Do not describe the image in detail — just note what it depicts in a few words. \
+If the illustration is rotated sideways on the page (i.e. you need to rotate the page 90° clockwise \
+or counter-clockwise to view it correctly), add |rotate90cw or |rotate90ccw at the end of the \
+description, e.g. ![Figure](a house with palm trees|rotate90cw). \
+Only emit a figure tag for actual illustrations, engravings, maps, photographs, or plates — NOT for \
+blank pages, empty pages, pages with only minor blemishes/specks, or decorative page borders.
 - Do NOT add any commentary, explanation, or preamble. Output ONLY the Markdown text.""",
         description="System prompt for Qwen3 VL OCR",
     )
