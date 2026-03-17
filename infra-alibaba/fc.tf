@@ -6,29 +6,29 @@ locals {
   python310_layer = "acs:fc:${var.region}:official:layers/Python310/versions/3"
 }
 
-# --- Code packages in OSS ---
+# --- Code packages in OSS (hash in key forces FC to reload code) ---
 
 resource "alicloud_oss_bucket_object" "rag_api_pkg" {
   bucket = alicloud_oss_bucket.docs.id
-  key    = "fc-packages/rag-api.zip"
+  key    = "fc-packages/rag-api-${filemd5("${path.module}/packages/rag-api.zip")}.zip"
   source = "${path.module}/packages/rag-api.zip"
 }
 
 resource "alicloud_oss_bucket_object" "docproc_pkg" {
   bucket = alicloud_oss_bucket.docs.id
-  key    = "fc-packages/docproc.zip"
+  key    = "fc-packages/docproc-${filemd5("${path.module}/packages/docproc.zip")}.zip"
   source = "${path.module}/packages/docproc.zip"
 }
 
 resource "alicloud_oss_bucket_object" "chunker_pkg" {
   bucket = alicloud_oss_bucket.docs.id
-  key    = "fc-packages/chunker.zip"
+  key    = "fc-packages/chunker-${filemd5("${path.module}/packages/chunker.zip")}.zip"
   source = "${path.module}/packages/chunker.zip"
 }
 
 resource "alicloud_oss_bucket_object" "admin_pkg" {
   bucket = alicloud_oss_bucket.docs.id
-  key    = "fc-packages/admin.zip"
+  key    = "fc-packages/admin-${filemd5("${path.module}/packages/admin.zip")}.zip"
   source = "${path.module}/packages/admin.zip"
 }
 
