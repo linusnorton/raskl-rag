@@ -245,7 +245,11 @@ async function saveOverlay(reindex) {
       val = val === '' ? null : parseInt(val, 10);
       if (val !== null && isNaN(val)) val = null;
     } else if (field === 'keywords') {
-      val = val ? val.split(',').map(s => s.trim()).filter(Boolean) : [];
+      if (val.startsWith('[')) {
+        try { val = JSON.parse(val); } catch(e) { val = []; }
+      } else {
+        val = val ? val.split(',').map(s => s.trim()).filter(Boolean) : [];
+      }
     } else {
       val = val || null;
     }

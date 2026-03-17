@@ -127,7 +127,16 @@ def update_document_metadata(conn: psycopg.Connection, doc_id: str, fields: dict
     if "keywords" in safe:
         kw = safe["keywords"]
         if isinstance(kw, str):
-            safe["keywords"] = [k.strip() for k in kw.split(",") if k.strip()]
+            kw = kw.strip()
+            if kw.startswith("["):
+                import json
+
+                try:
+                    safe["keywords"] = json.loads(kw)
+                except (json.JSONDecodeError, ValueError):
+                    safe["keywords"] = []
+            else:
+                safe["keywords"] = [k.strip() for k in kw.split(",") if k.strip()]
         elif kw is None:
             safe["keywords"] = []
 
