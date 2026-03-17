@@ -33,9 +33,20 @@ class PipelineConfig(BaseSettings):
     min_lang_chars: int = Field(default=30, description="Minimum characters to attempt language detection")
     lang_set: list[str] = Field(default=["en", "ms", "zh", "ar"], description="Languages to detect")
 
+    # Provider selection ("bedrock" or "model_studio")
+    llm_provider: str = Field(default="bedrock", description="LLM provider: bedrock or model_studio")
+
     # Qwen3 VL (Bedrock)
     bedrock_region: str = Field(default="eu-west-2", description="AWS region for Bedrock API calls")
     bedrock_ocr_model_id: str = Field(default="qwen.qwen3-vl-235b-a22b", description="Bedrock model ID for OCR")
+
+    # Model Studio (Alibaba Cloud)
+    model_studio_api_key: str = Field(default="", description="Alibaba Model Studio API key")
+    model_studio_base_url: str = Field(
+        default="https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+        description="Model Studio OpenAI-compatible base URL",
+    )
+    model_studio_ocr_model_id: str = Field(default="qwen3.5-397b-a17b", description="Model Studio model ID for OCR")
     qwen3vl_dpi: int = Field(default=300, description="DPI for page rendering when using Qwen3 VL backend")
     qwen3vl_max_tokens: int = Field(default=4096, description="Max tokens per page for Qwen3 VL OCR")
     qwen3vl_max_workers: int = Field(default=50, description="Max parallel Bedrock calls for Qwen3 VL")

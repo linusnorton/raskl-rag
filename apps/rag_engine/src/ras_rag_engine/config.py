@@ -25,12 +25,22 @@ class RAGConfig(BaseSettings):
         "judge whether the document passage is relevant"
     )
 
+    # Provider selection ("bedrock" or "model_studio")
+    llm_provider: str = "bedrock"
+
     # Bedrock
     bedrock_region: str = "eu-west-2"
     bedrock_chat_model_id: str = "qwen.qwen3-235b-a22b-2507-v1:0"
     bedrock_embed_model_id: str = "amazon.titan-embed-text-v2:0"
     bedrock_rerank_region: str = "eu-central-1"  # Cohere Rerank not available in all regions
     bedrock_rerank_model_id: str = "amazon.rerank-v1:0"
+
+    # Model Studio (Alibaba Cloud)
+    model_studio_api_key: str = ""
+    model_studio_base_url: str = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+    model_studio_chat_model_id: str = "qwen3.5-397b-a17b"
+    model_studio_embed_model_id: str = "text-embedding-v4"
+    model_studio_rerank_model_id: str = "qwen3-reranker-8b"
 
     # Extended thinking (0 = disabled)
     llm_thinking_budget: int = 2048

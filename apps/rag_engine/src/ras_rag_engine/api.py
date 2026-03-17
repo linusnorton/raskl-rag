@@ -305,6 +305,9 @@ async def transcribe_audio(
     config: RAGConfig = Depends(_get_config),
 ):
     """OpenAI-compatible STT endpoint backed by AWS Transcribe."""
+    if config.llm_provider == "model_studio":
+        raise HTTPException(status_code=501, detail="Speech-to-text not yet implemented for Model Studio provider")
+
     import boto3
 
     bucket = config.transcribe_s3_bucket
@@ -385,6 +388,8 @@ async def text_to_speech(
     config: RAGConfig = Depends(_get_config),
 ):
     """OpenAI-compatible TTS endpoint backed by Amazon Polly."""
+    if config.llm_provider == "model_studio":
+        raise HTTPException(status_code=501, detail="Text-to-speech not yet implemented for Model Studio provider")
     import boto3
 
     voice_id = _POLLY_VOICE_MAP.get(request.voice, "Arthur")

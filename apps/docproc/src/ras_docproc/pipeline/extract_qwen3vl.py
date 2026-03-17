@@ -119,6 +119,61 @@ def _call_bedrock(
     raise RuntimeError("unreachable")
 
 
+def _call_model_studio(
+    api_key: str,
+    base_url: str,
+    model_id: str,
+    image_bytes: bytes,
+    max_tokens: int,
+    system_prompt: str,
+) -> str:
+    """Call Alibaba Model Studio via OpenAI-compatible API with image."""
+    import base64
+
+    from openai import OpenAI
+
+    client = OpenAI(api_key=api_key, base_url=base_url)
+    b64 = base64.b64encode(image_bytes).decode("utf-8")
+
+    for attempt in range(MAX_RETRIES):
+        try:
+            response = client.chat.completions.create(
+                model=model_id,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
+                            {"type": "text", "text": "Convert this page to Markdown following the system instructions."},
+                        ],
+                    },
+                ],
+                max_tokens=max_tokens,
+                temperature=0.0,
+            )
+
+            text = response.choices[0].message.content or ""
+            # Strip thinking blocks (Qwen3.5 reasoning)
+            text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+            text = re.sub(r"^```(?:markdown)?\s*\n?", "", text)
+            text = re.sub(r"\n?```\s*$", "", text)
+            return text
+        except Exception as e:
+            if attempt == MAX_RETRIES - 1:
+                raise
+            delay = RETRY_BASE_DELAY * (2**attempt)
+            logger.warning(
+                "Model Studio: call failed (attempt %d/%d), retrying in %ds: %s",
+                attempt + 1,
+                MAX_RETRIES,
+                delay,
+                e,
+            )
+            time.sleep(delay)
+    raise RuntimeError("unreachable")
+
+
 def _parse_markdown_to_blocks(
     markdown: str,
     page_width: float,
@@ -232,7 +287,7 @@ def _parse_markdown_to_blocks(
     return blocks, figure_descriptions
 
 
-def _process_page_bedrock(
+def _process_page(
     config: PipelineConfig,
     doc_id: str,
     page_num: int,
@@ -240,15 +295,25 @@ def _process_page_bedrock(
     page_width: float,
     page_height: float,
 ) -> tuple[int, list[TextBlockRecord], list[str]]:
-    """Call Bedrock and parse response for a single page. Returns (page_num, blocks, figure_descriptions)."""
-    markdown = _call_bedrock(
-        config.bedrock_region,
-        config.bedrock_ocr_model_id,
-        img_bytes,
-        config.qwen3vl_max_tokens,
-        config.qwen3vl_system_prompt,
-    )
-    logger.debug("Qwen3 VL: page %d response length %d chars", page_num, len(markdown))
+    """Call the configured VL model and parse response for a single page. Returns (page_num, blocks, figure_descriptions)."""
+    if config.llm_provider == "model_studio":
+        markdown = _call_model_studio(
+            config.model_studio_api_key,
+            config.model_studio_base_url,
+            config.model_studio_ocr_model_id,
+            img_bytes,
+            config.qwen3vl_max_tokens,
+            config.qwen3vl_system_prompt,
+        )
+    else:
+        markdown = _call_bedrock(
+            config.bedrock_region,
+            config.bedrock_ocr_model_id,
+            img_bytes,
+            config.qwen3vl_max_tokens,
+            config.qwen3vl_system_prompt,
+        )
+    logger.debug("VL extraction: page %d response length %d chars", page_num, len(markdown))
 
     blocks, figure_descriptions = _parse_markdown_to_blocks(markdown, page_width, page_height, doc_id, page_num)
     return page_num, blocks, figure_descriptions
@@ -304,7 +369,7 @@ def extract_with_qwen3vl(
     with ThreadPoolExecutor(max_workers=config.qwen3vl_max_workers) as executor:
         futures = {
             executor.submit(
-                _process_page_bedrock, config, doc_id, page_num, *rendered[page_num]
+                _process_page, config, doc_id, page_num, *rendered[page_num]
             ): page_num
             for page_num in pages_to_process
         }

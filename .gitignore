@@ -21,3 +21,8 @@ infra/terraform.tfvars
 
 # Local env credentials
 .env
+
+# Alibaba Cloud Terraform
+infra-alibaba/.terraform/
+infra-alibaba/terraform.tfstate*
+reports/

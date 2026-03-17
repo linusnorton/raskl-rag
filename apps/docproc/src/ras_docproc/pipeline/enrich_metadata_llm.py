@@ -80,20 +80,34 @@ def enrich_metadata_llm(
     user_message = f"DOCUMENT TEXT (first pages):\n\n{opening_text}"
 
     try:
-        import boto3
-        from botocore.config import Config as BotoConfig
+        if config.llm_provider == "model_studio":
+            from openai import OpenAI
 
-        bedrock_config = BotoConfig(read_timeout=120, retries={"max_attempts": 2})
-        client = boto3.client("bedrock-runtime", region_name=config.bedrock_region, config=bedrock_config)
+            ms_client = OpenAI(api_key=config.model_studio_api_key, base_url=config.model_studio_base_url)
+            resp = ms_client.chat.completions.create(
+                model=config.model_studio_ocr_model_id,
+                messages=[
+                    {"role": "system", "content": _EXTRACT_PROMPT},
+                    {"role": "user", "content": user_message},
+                ],
+                max_tokens=1024,
+                temperature=0.0,
+            )
+            raw_text = resp.choices[0].message.content or ""
+        else:
+            import boto3
+            from botocore.config import Config as BotoConfig
 
-        response = client.converse(
-            modelId=config.bedrock_ocr_model_id,
-            messages=[{"role": "user", "content": [{"text": user_message}]}],
-            system=[{"text": _EXTRACT_PROMPT}],
-            inferenceConfig={"maxTokens": 1024, "temperature": 0.0},
-        )
+            bedrock_config = BotoConfig(read_timeout=120, retries={"max_attempts": 2})
+            bedrock_client = boto3.client("bedrock-runtime", region_name=config.bedrock_region, config=bedrock_config)
 
-        raw_text = response["output"]["message"]["content"][0]["text"]
+            resp = bedrock_client.converse(
+                modelId=config.bedrock_ocr_model_id,
+                messages=[{"role": "user", "content": [{"text": user_message}]}],
+                system=[{"text": _EXTRACT_PROMPT}],
+                inferenceConfig={"maxTokens": 1024, "temperature": 0.0},
+            )
+            raw_text = resp["output"]["message"]["content"][0]["text"]
 
         # Strip <think>...</think> blocks (Qwen3 reasoning)
         raw_text = re.sub(r"<think>.*?</think>", "", raw_text, flags=re.DOTALL).strip()

@@ -18,6 +18,17 @@ class EmbedProvider(ABC):
 
 
 def get_embed_provider(config: ChunkerConfig) -> EmbedProvider:
+    if config.llm_provider == "model_studio":
+        from .model_studio_embed import ModelStudioEmbedProvider
+
+        return ModelStudioEmbedProvider(
+            api_key=config.model_studio_api_key,
+            base_url=config.model_studio_base_url,
+            model_id=config.model_studio_embed_model_id,
+            dimensions=config.embed_dimensions,
+            task_prefix=config.embed_task_prefix,
+        )
+
     from .bedrock_embed import BedrockEmbedProvider
 
     return BedrockEmbedProvider(

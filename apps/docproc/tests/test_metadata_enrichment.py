@@ -195,17 +195,8 @@ class TestEnrichMetadataLLM:
         _apply_llm_result(doc, result)
         assert doc.year is None
 
-    def test_full_llm_enrichment_with_mock(self):
-        import sys
-        from unittest.mock import MagicMock
-
-        # Pre-insert a mock boto3 into sys.modules so the lazy import picks it up
-        mock_boto3 = MagicMock()
-        mock_botocore_config = MagicMock()
-        sys.modules.setdefault("boto3", mock_boto3)
-        sys.modules.setdefault("botocore", MagicMock())
-        sys.modules.setdefault("botocore.config", mock_botocore_config)
-
+    @patch("boto3.client")
+    def test_full_llm_enrichment_with_mock(self, mock_boto3_client):
         from ras_docproc.pipeline.enrich_metadata_llm import enrich_metadata_llm
         from ras_docproc.config import PipelineConfig
 
@@ -221,7 +212,7 @@ class TestEnrichMetadataLLM:
         })
 
         mock_client = MagicMock()
-        mock_boto3.client.return_value = mock_client
+        mock_boto3_client.return_value = mock_client
         mock_client.converse.return_value = {
             "output": {"message": {"content": [{"text": llm_response}]}}
         }
