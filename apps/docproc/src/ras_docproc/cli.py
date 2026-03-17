@@ -41,8 +41,6 @@ def _run_pipeline(pdf_path: Path, out_dir: Path, max_pages: int | None, page_ran
 
     from ras_docproc.config import PipelineConfig
     from ras_docproc.pipeline.classify_doctype import classify_document_type
-    from ras_docproc.pipeline.enrich_metadata_llm import enrich_metadata_llm
-    from ras_docproc.pipeline.enrich_metadata_web import enrich_metadata_web
     from ras_docproc.pipeline.boilerplate import detect_boilerplate
     from ras_docproc.pipeline.detect_captions import detect_captions
     from ras_docproc.pipeline.detect_content_area import detect_content_area
@@ -73,8 +71,6 @@ def _run_pipeline(pdf_path: Path, out_dir: Path, max_pages: int | None, page_ran
         "Extract (Qwen3 VL)",
         "Extract (MuPDF)",
         "Extract metadata",
-        "Enrich metadata (LLM)",
-        "Enrich metadata (web)",
         "Classify doc type",
         "Normalize text",
         "Detect boilerplate",
@@ -152,17 +148,7 @@ def _run_pipeline(pdf_path: Path, out_dir: Path, max_pages: int | None, page_ran
     document = extract_metadata(document, blocks_by_page, pdf_metadata)
     progress.update(1)
 
-    # Step 4b: LLM metadata enrichment (first 10 pages)
-    progress.set_postfix_str("Enrich (LLM)")
-    document = enrich_metadata_llm(document, blocks_by_page, config)
-    progress.update(1)
-
-    # Step 4c: Web metadata enrichment (CrossRef, OpenLibrary, DuckDuckGo)
-    progress.set_postfix_str("Enrich (web)")
-    document = enrich_metadata_web(document)
-    progress.update(1)
-
-    # Step 4d: Apply page_offset to page numbers (adjusts for JSTOR/MUSE cover pages)
+    # Step 4b: Apply page_offset to page numbers (adjusts for JSTOR/MUSE cover pages)
     if document.page_offset and document.page_offset != 0:
         offset = document.page_offset
         logger.info("Applying page_offset=%d to all page numbers", offset)
@@ -178,7 +164,7 @@ def _run_pipeline(pdf_path: Path, out_dir: Path, max_pages: int | None, page_ran
         for pr in page_records:
             pr.page_num_1 = pr.page_num_1 + offset
 
-    # Step 4c: Classify document type
+    # Step 4c: Classify document type (renamed from 4d → 4c after removing enrichment stages)
     progress.set_postfix_str("Classify doc type")
     document = classify_document_type(document, blocks_by_page, config)
     progress.update(1)

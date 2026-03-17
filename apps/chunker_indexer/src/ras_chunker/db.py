@@ -130,28 +130,15 @@ def upsert_document(conn: psycopg.Connection, meta: DocMeta) -> None:
     """Insert or update document metadata."""
     conn.execute(
         """
-        INSERT INTO documents (doc_id, source_filename, title, author, editor, year, publication,
-                               document_type, abstract, keywords, language, isbn, issn, series,
-                               description, page_offset, sha256_pdf, s3_prefix)
-        VALUES (%(doc_id)s, %(source_filename)s, %(title)s, %(author)s, %(editor)s, %(year)s,
-                %(publication)s, %(document_type)s, %(abstract)s, %(keywords)s, %(language)s,
-                %(isbn)s, %(issn)s, %(series)s, %(description)s, %(page_offset)s, %(sha256_pdf)s,
-                %(s3_prefix)s)
+        INSERT INTO documents (doc_id, source_filename, title, author, year, publication, document_type, page_offset, sha256_pdf, s3_prefix)
+        VALUES (%(doc_id)s, %(source_filename)s, %(title)s, %(author)s, %(year)s, %(publication)s, %(document_type)s, %(page_offset)s, %(sha256_pdf)s, %(s3_prefix)s)
         ON CONFLICT (doc_id) DO UPDATE SET
             source_filename = EXCLUDED.source_filename,
             title = EXCLUDED.title,
             author = EXCLUDED.author,
-            editor = EXCLUDED.editor,
             year = EXCLUDED.year,
             publication = EXCLUDED.publication,
             document_type = EXCLUDED.document_type,
-            abstract = EXCLUDED.abstract,
-            keywords = EXCLUDED.keywords,
-            language = EXCLUDED.language,
-            isbn = EXCLUDED.isbn,
-            issn = EXCLUDED.issn,
-            series = EXCLUDED.series,
-            description = EXCLUDED.description,
             page_offset = EXCLUDED.page_offset,
             sha256_pdf = EXCLUDED.sha256_pdf,
             s3_prefix = EXCLUDED.s3_prefix,

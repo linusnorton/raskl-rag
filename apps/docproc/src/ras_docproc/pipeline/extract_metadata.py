@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import re
 
-from ras_docproc.schema import DocumentRecord, MetadataSource, TextBlockRecord
+from ras_docproc.schema import DocumentRecord, TextBlockRecord
 
 logger = logging.getLogger(__name__)
 
@@ -64,15 +64,10 @@ _FILENAME_META_RE = re.compile(r"^(.+?)\s*\((\d{4})\)")
 
 
 def _clean_title(t: str) -> str:
-    """Strip markdown formatting artifacts and trailing author lines from title text."""
+    """Strip markdown formatting artifacts from title text."""
     t = re.sub(r"\*{1,2}(.+?)\*{1,2}", r"\1", t)  # **bold** / *italic*
     t = re.sub(r"^```(?:markdown)?\s*", "", t)  # code fence opener
     t = re.sub(r"```\s*$", "", t)  # code fence closer
-    # If the block contains a newline, the first line is the title and subsequent
-    # lines are typically the author name (e.g. "Title\nPeter Borschberg").
-    # Take only the first non-empty line.
-    lines = [ln.strip() for ln in t.strip().splitlines() if ln.strip()]
-    t = lines[0] if lines else t.strip()
     return t.strip()
 
 
@@ -147,21 +142,14 @@ def extract_metadata(
 
     Mutates and returns the DocumentRecord with populated fields.
     """
-    def _track(field: str, source: str, value: str, confidence: float = 0.9) -> None:
-        document.metadata_sources.append(
-            MetadataSource(field=field, source=source, confidence=confidence, raw_value=str(value)[:200])
-        )
-
     # 1. Apply PDF-level metadata as defaults (skip known-bad platform titles)
     if pdf_metadata.get("title") and not document.title:
         candidate = pdf_metadata["title"].strip()
         candidate_normalized = re.sub(r"[^\w\s]", "", candidate).strip().upper()
         if candidate_normalized not in {re.sub(r"[^\w\s]", "", t).strip().upper() for t in BAD_TITLES}:
             document.title = candidate
-            _track("title", "pdf_metadata", candidate, 0.6)
     if pdf_metadata.get("author") and not document.author:
         document.author = pdf_metadata["author"].strip()
-        _track("author", "pdf_metadata", document.author, 0.6)
 
     # 2. Parse cover page text (first 2 pages)
     cover_lines: list[str] = []
@@ -176,14 +164,12 @@ def extract_metadata(
     author_match = re.search(r"Author\(?s?\)?:\s*(.+)", cover_text, re.IGNORECASE)
     if author_match and not document.author:
         document.author = author_match.group(1).strip()
-        _track("author", "cover_page_regex", document.author)
 
     # Author fallback: parse from filename pattern "Author (YEAR) ..."
     if not document.author and document.source_filename:
         fn_m = _FILENAME_META_RE.match(document.source_filename)
         if fn_m:
             document.author = fn_m.group(1).strip()
-            _track("author", "filename_pattern", document.author, 0.5)
 
     # Source: line - parse journal, volume, issue, year, pages
     source_match = SOURCE_RE.search(cover_text)
@@ -191,22 +177,17 @@ def extract_metadata(
         journal = source_match.group(1)
         if journal and not document.publication:
             document.publication = journal.strip().rstrip(",")
-            _track("publication", "cover_page_regex", document.publication)
         if source_match.group(2) and not document.volume:
             document.volume = source_match.group(2)
-            _track("volume", "cover_page_regex", document.volume)
         if source_match.group(3) and not document.issue:
             document.issue = source_match.group(3)
-            _track("issue", "cover_page_regex", document.issue)
         date_part = source_match.group(4)
         if date_part and not document.year:
             year_m = YEAR_RE.search(date_part)
             if year_m:
                 document.year = int(year_m.group(1))
-                _track("year", "cover_page_regex", str(document.year))
         if source_match.group(5) and not document.page_range_label:
             document.page_range_label = source_match.group(5)
-            _track("page_range_label", "cover_page_regex", document.page_range_label)
         # Build journal_ref from parsed fields
         if not document.journal_ref and document.publication:
             parts = [document.publication]
@@ -273,19 +254,16 @@ def extract_metadata(
         url_m = URL_RE.search(url_line_match.group(1))
         if url_m:
             document.url = _strip_markdown_link(url_m.group(0).rstrip("."))
-            _track("url", "cover_page_regex", document.url)
     # Fallback: any URL on cover pages
     if not document.url:
         url_m = URL_RE.search(cover_text)
         if url_m:
             document.url = _strip_markdown_link(url_m.group(0).rstrip("."))
-            _track("url", "cover_page_regex", document.url, 0.5)
 
     # DOI
     doi_match = DOI_RE.search(cover_text)
     if doi_match and not document.doi:
         document.doi = _strip_markdown_link(doi_match.group(0).rstrip("."))
-        _track("doi", "cover_page_regex", document.doi)
 
     # Title heuristic: largest heading on page 1, or first substantial line
     if not document.title:

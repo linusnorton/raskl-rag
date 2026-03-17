@@ -35,7 +35,7 @@ ras-rag-engine  (OpenAI-compatible RAG API → Open WebUI)
 
 ## Architecture overview
 
-The pipeline runs seventeen stages in sequence. Each stage reads from the previous stage's output
+The pipeline runs fifteen stages in sequence. Each stage reads from the previous stage's output
 and writes an augmented version forward. The final stage writes JSONL files to disk.
 
 | # | Stage | What it does |
@@ -44,9 +44,7 @@ and writes an augmented version forward. The final stage writes JSONL files to d
 | 2 | Extract (Qwen3 VL) | Extracts structured text blocks from the PDF via Bedrock |
 | 3 | Extract (MuPDF) | Low-level extraction: fonts, span data, images, raw metadata |
 | 4 | Extract Metadata | Parses the JSTOR/MUSE cover page for title, author, year, DOI, journal pages |
-| 4b | Enrich Metadata (LLM) | Extracts structured metadata from first 10 pages via Qwen3 VL |
-| 4c | Enrich Metadata (Web) | Enriches via CrossRef (DOI), OpenLibrary (title/author), DuckDuckGo |
-| 4d | Classify Doc Type | Classifies the document as `primary_source` or `journal_article` via LLM |
+| 4c | Classify Doc Type | Classifies the document as `primary_source` or `journal_article` via LLM |
 | 5 | Normalize Text | NFKC normalization, dehyphenation, superscript cleanup |
 | 6 | Detect Boilerplate | Removes platform headers, running footers, page numbers |
 | 7 | Detect Content Area | Computes the usable text area per page |
@@ -237,40 +235,13 @@ factual claims about historical events, and (3) display source type in citation 
 `government_report`) can be added without schema migration. The `None` default provides graceful
 degradation for documents processed before this stage was added.
 
-### D9 — Metadata enrichment (LLM + web APIs)
-
-**What we chose:** A two-stage metadata enrichment pipeline after the regex-based cover page
-parsing (Stage 4). Stage 4b sends the first 10 pages of OCR text to Qwen3 VL for structured
-metadata extraction (title, author, editor, year, abstract, keywords, language, ISBN/ISSN,
-series, description). Stage 4c queries web APIs — CrossRef (by DOI), OpenLibrary (by
-title/author), and DuckDuckGo Instant Answers — to validate and fill remaining gaps.
-
-**Why three sources:** The JMBRAS corpus includes both journal articles (which have DOIs and
-CrossRef records) and primary sources (books, diaries) which appear in OpenLibrary. DuckDuckGo
-provides Wikipedia summaries for contextual descriptions. Each source has different strengths:
-CrossRef is authoritative for journal metadata, OpenLibrary for book ISBNs and subjects,
-DuckDuckGo for general context.
-
-**Priority order:** Fields extracted from the cover page regex (Stage 4) are never overwritten.
-The LLM (Stage 4b) fills gaps the regex missed. Web APIs (Stage 4c) fill what the LLM missed.
-Within web APIs: CrossRef (confidence 1.0) > OpenLibrary (0.7-0.8) > DuckDuckGo (0.5).
-
-**Provenance tracking:** Every populated metadata field records its source (e.g. `pdf_metadata`,
-`cover_page_regex`, `llm_extraction`, `crossref`, `openlibrary`) and a confidence score in the
-`metadata_sources` list. This supports auditing, debugging, and future human review of uncertain
-metadata.
-
-**New fields added:** `abstract`, `keywords`, `language`, `isbn`, `issn`, `series`, `description`,
-`metadata_sources`. The `editor` field (previously defined but never populated) is now filled by
-CrossRef and LLM extraction. All new fields are nullable/empty-list so existing data is unaffected.
-
 ## Output format
 
 All output goes to `data/out/{doc_id}/`:
 
 | File | Contents |
 |------|----------|
-| `documents.jsonl` | One record: title, author, editor, year, DOI, page range, abstract, keywords, language, ISBN/ISSN, series, description, `page_offset`, `document_type`, `metadata_sources` |
+| `documents.jsonl` | One record: title, author, year, DOI, page range, `page_offset`, `document_type` |
 | `pages.jsonl` | One record per page: dimensions, rotation, content bounding box |
 | `text_blocks.jsonl` | Body text blocks: raw text, cleaned text, language, bbox, block type |
 | `removed_blocks.jsonl` | Blocks removed as boilerplate (for debugging) |
