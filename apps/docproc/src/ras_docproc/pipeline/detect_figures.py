@@ -82,10 +82,13 @@ def detect_figures(
                     # If the VL model detected a figure on this page AND there are no
                     # real embedded images, render the scan as a figure.
                     # Skip if the page already has real images — they'll be extracted normally.
+                    # Only trust VL figure tags on textless pages — on pages with OCR text,
+                    # VL often false-positives on text that describes figures on other pages.
                     if (
                         page_num in vl_figure_pages
                         and page_num not in rendered_scan_pages
                         and page_num not in pages_with_real_images
+                        and page_num in textless_pages
                     ):
                         rendered_scan_pages.add(page_num)
                         rotation = page_rotations.get(page_num, 0)

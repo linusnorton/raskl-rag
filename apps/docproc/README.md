@@ -281,10 +281,15 @@ OCR layer also have text spans (from the invisible text overlay). Only pure imag
 MuPDF extracts zero text — lack spans entirely. This cleanly separates "scan background" images
 from legitimate large illustrations in born-digital documents.
 
-**Safety net:** If the VL model flagged a page with `![Figure]()` tags, the scan background is
-rendered as a figure instead of skipped — the VL model correctly identifies real illustrations
+**Safety net:** If the VL model flagged a textless page with `![Figure]()` tags, the scan background
+is rendered as a figure instead of skipped — the VL model correctly identifies real illustrations
 even in scanned pages. Smaller images on the same page (e.g. an embedded illustration at 27% area)
 are still extracted normally regardless of the threshold.
+
+**VL false-positive guard:** VL figure tags are only trusted on textless pages. On pages with OCR
+text spans, VL often false-positives on text that describes figures on other pages (e.g. page text
+says "Fig. 1. Map of Peninsula Malaya" and VL emits `![Figure](Map of Peninsula Malaya)` even
+though the page is pure text). Gating VL scan rendering to textless pages eliminates these.
 
 ## Output format
 
