@@ -42,7 +42,7 @@ resource "alicloud_oss_bucket_object" "admin_pkg" {
 resource "alicloud_fc_function" "rag_api" {
   service     = alicloud_fc_service.main.name
   name        = "${local.prefix}-rag-api"
-  runtime     = "custom"
+  runtime     = "custom.debian10"
   handler     = "not-used"
   timeout     = 300
   memory_size = 2048
@@ -110,7 +110,7 @@ resource "alicloud_fc_trigger" "rag_api_http" {
 resource "alicloud_fc_function" "docproc" {
   service     = alicloud_fc_service.main.name
   name        = "${local.prefix}-docproc"
-  runtime     = "custom"
+  runtime     = "custom.debian10"
   handler     = "not-used"
   timeout     = 7200  # 2 hours
   memory_size = 3008
@@ -172,7 +172,7 @@ resource "alicloud_fc_trigger" "docproc_oss" {
 resource "alicloud_fc_function" "chunker" {
   service     = alicloud_fc_service.main.name
   name        = "${local.prefix}-chunker"
-  runtime     = "custom"
+  runtime     = "custom.debian10"
   handler     = "not-used"
   timeout     = 3600  # 1 hour
   memory_size = 1024
@@ -234,7 +234,7 @@ resource "alicloud_fc_trigger" "chunker_oss" {
 resource "alicloud_fc_function" "admin" {
   service     = alicloud_fc_service.main.name
   name        = "${local.prefix}-admin"
-  runtime     = "custom"
+  runtime     = "custom.debian10"
   handler     = "not-used"
   timeout     = 120
   memory_size = 512

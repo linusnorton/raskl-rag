@@ -36,3 +36,7 @@ to understand the next chunk.
 **Recommendation:** Add configurable chunk overlap (e.g. 1-2 sentences from the end
 of chunk N are prepended to chunk N+1). Increases storage by ~10-20% but improves
 retrieval for boundary-adjacent content.
+
+Aliba cloud keys in github
+Voice/transcribe
+Check google search / tools
