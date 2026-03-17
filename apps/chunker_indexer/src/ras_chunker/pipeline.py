@@ -121,7 +121,8 @@ def run_index(doc_id: str, config: ChunkerConfig, *, s3_prefix: str = "", versio
         output.meta.s3_prefix = s3_prefix
 
     # Embed
-    console.print(f"Embedding {len(chunks)} chunks via Bedrock ({config.bedrock_embed_model_id}) ...")
+    embed_model = config.model_studio_embed_model_id if config.llm_provider == "model_studio" else config.bedrock_embed_model_id
+    console.print(f"Embedding {len(chunks)} chunks via {config.llm_provider} ({embed_model}) ...")
     embeddings = embed_chunks(chunks, config)
     console.print(f"[green]Embedded {len(embeddings)} chunks[/green]")
 

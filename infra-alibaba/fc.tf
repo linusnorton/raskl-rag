@@ -123,9 +123,18 @@ resource "alicloud_fcv3_function" "docproc" {
   }
 }
 
-# NOTE: docproc OSS trigger may conflict with old FC 2.0 trigger still on the bucket.
-# Delete old triggers from FC console first, then uncomment:
-# resource "alicloud_fcv3_trigger" "docproc_oss" { ... }
+resource "alicloud_fcv3_trigger" "docproc_oss" {
+  function_name   = alicloud_fcv3_function.docproc.function_name
+  trigger_name    = "oss-upload-trigger"
+  trigger_type    = "oss"
+  qualifier       = "LATEST"
+  source_arn      = "acs:oss:${var.region}:${local.account_id}:${alicloud_oss_bucket.docs.id}"
+  invocation_role = alicloud_ram_role.fc_exec.arn
+  trigger_config = jsonencode({
+    events = ["oss:ObjectCreated:PutObject", "oss:ObjectCreated:PostObject", "oss:ObjectCreated:CompleteMultipartUpload"]
+    filter = { key = { prefix = "uploads/", suffix = ".pdf" } }
+  })
+}
 
 # --- Chunker (OSS-triggered, 1hr timeout) ---
 
