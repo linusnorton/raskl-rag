@@ -64,7 +64,7 @@ variable "embed_model_id" {
 variable "rerank_model_id" {
   description = "Model Studio model ID for reranking"
   type        = string
-  default     = "qwen3-reranker-8b"
+  default     = "gte-rerank"
 }
 
 variable "embed_dimensions" {

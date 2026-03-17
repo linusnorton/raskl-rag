@@ -36,7 +36,7 @@ def create_session_token(config: AdminConfig, user_info: dict[str, Any]) -> str:
         "email": user_info.get("email", ""),
         "name": user_info.get("name", ""),
         "role": user_info.get("role", "user"),
-        "exp": datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=config.session_expiry_hours),
+        "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=config.session_expiry_hours),
     }
     return jwt.encode(payload, config.secret_key, algorithm="HS256")
 
