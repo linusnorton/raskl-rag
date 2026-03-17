@@ -204,6 +204,12 @@ def extract_metadata(
             if year_m:
                 document.year = int(year_m.group(1))
                 _track("year", "cover_page_regex", str(document.year))
+        # Fallback: search full Source: line for year (handles "(226) (1974)" patterns)
+        if not document.year:
+            year_m = YEAR_RE.search(source_match.group(0))
+            if year_m:
+                document.year = int(year_m.group(1))
+                _track("year", "cover_page_regex", str(document.year))
         if source_match.group(5) and not document.page_range_label:
             document.page_range_label = source_match.group(5)
             _track("page_range_label", "cover_page_regex", document.page_range_label)

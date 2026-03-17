@@ -41,7 +41,7 @@ Rules:
 - Extract only what is stated or clearly implied in the text. Do not fabricate.
 - For title: prefer the main document title, not the journal name.
 - For author: use the form as written (e.g. "Abdullah, Munshi" or "Frank A. Swettenham").
-- For year: use the original publication year, not a digitisation or reprint year.
+- For year: use the publication year from the journal citation (volume/issue info), not a historical date mentioned in the document content. For example, if the journal says "Vol. 47, No. 2 (1974)" and the article discusses events in 1500, the year is 1974.
 - For description: write a brief factual summary based on the content you see.
 - For keywords: extract 3-8 terms covering the subject, region, period, and key topics.
 - Set null for any field you cannot determine from the text."""

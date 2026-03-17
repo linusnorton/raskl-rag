@@ -81,6 +81,22 @@ class TestExtractMetadataProvenance:
         assert "publication" in source_fields
         assert "volume" in source_fields
 
+    def test_source_line_with_issue_number_before_year(self):
+        """Year extracted from Source line where issue number precedes year in parens."""
+        from ras_docproc.pipeline.extract_metadata import extract_metadata
+
+        doc = _make_document()
+        cover_text = (
+            "Source: Journal of the Malaysian Branch of the Royal Asiatic Society, "
+            "Vol. 47, No. 2 (226) (1974), pp. 1-82\n"
+        )
+        blocks = {1: [_make_block(1, cover_text)]}
+        pdf_meta = {"page_count": "82"}
+
+        doc = extract_metadata(doc, blocks, pdf_meta)
+
+        assert doc.year == 1974
+
     def test_filename_pattern_tracked(self):
         from ras_docproc.pipeline.extract_metadata import extract_metadata
 
