@@ -142,15 +142,26 @@
 
 <script>
 const DOC_ID = "{{ doc.doc_id }}";
-const overlay = {{ overlay | tojson }};
+let currentOverlay = {{ overlay | tojson }};
 
-// Current DB values for diffing
+// Current DB values (overlay already applied)
 const dbValues = {
   {% for field, label, ftype in editable_fields %}
   {% if field == 'keywords' %}
   '{{ field }}': {{ (doc[field] or []) | tojson }},
   {% else %}
   '{{ field }}': {{ doc[field] | tojson }},
+  {% endif %}
+  {% endfor %}
+};
+
+// Base values from the original extracted documents.jsonl (before overlay)
+const baseValues = {
+  {% for field, label, ftype in editable_fields %}
+  {% if field == 'keywords' %}
+  '{{ field }}': {{ (base_meta.get(field) or []) | tojson }},
+  {% else %}
+  '{{ field }}': {{ base_meta.get(field) | tojson }},
   {% endif %}
   {% endfor %}
 };
@@ -242,15 +253,18 @@ async function saveOverlay(reindex) {
     allValues[field] = val;
   });
 
-  // Build sparse overlay: only fields that differ from original DB values
+  // Build overlay: only fields that differ from the *base* extracted values
+  // Fields matching the base are removed from the overlay (reset to extracted)
   const newOverlay = {};
   for (const [field, val] of Object.entries(allValues)) {
-    if (!valuesEqual(val, dbValues[field])) {
+    if (!valuesEqual(val, baseValues[field])) {
       newOverlay[field] = val;
     }
   }
 
-  if (Object.keys(newOverlay).length === 0 && !reindex) {
+  // Check if anything actually changed from current state
+  const overlayChanged = JSON.stringify(newOverlay) !== JSON.stringify(currentOverlay);
+  if (!overlayChanged && !reindex) {
     document.getElementById('actionMsg').innerHTML = '<div class="msg msg-ok">No changes to save</div>';
     cancelEdit();
     return;
@@ -260,14 +274,14 @@ async function saveOverlay(reindex) {
   const resp = await fetch(url, {
     method: 'PUT',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify(Object.keys(newOverlay).length > 0 ? newOverlay : allValues),
+    body: JSON.stringify(newOverlay),
   });
   const data = await resp.json();
   const msg = document.getElementById('actionMsg');
 
   if (resp.ok) {
     msg.innerHTML = `<div class="msg msg-ok">${data.message}</div>`;
-    // Update display values and exit edit mode
+    currentOverlay = newOverlay;
     for (const [field, val] of Object.entries(allValues)) {
       dbValues[field] = val;
     }

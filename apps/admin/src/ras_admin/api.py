@@ -191,21 +191,31 @@ async def document_detail(request: Request, doc_id: str):
     finally:
         conn.close()
 
-    # Get S3 versions and overlay
+    # Get S3 versions, overlay, and base (extracted) metadata
     versions = []
     overlay = {}
+    base_meta = {}
     if config.s3_bucket:
         s3_client = s3.get_client()
         versions = s3.list_versions(s3_client, config.s3_bucket, doc_id)
         for v in versions:
             v["meta"] = s3.get_version_meta(s3_client, config.s3_bucket, v["prefix"])
         overlay = s3.download_overlay(s3_client, config.s3_bucket, doc_id) or {}
+        # Load base (extracted) metadata from latest documents.jsonl
+        if versions:
+            prefix = versions[-1]["prefix"]
+            base_records = s3.download_jsonl_as_list(s3_client, config.s3_bucket, f"{prefix}documents.jsonl")
+            if base_records:
+                base_meta = base_records[0]
     else:
+        import json as _json
+
         overlay_path = Path("data/out") / doc_id / "documents_overlay.jsonl"
         if overlay_path.exists():
-            import json
-
-            overlay = json.loads(overlay_path.read_text().strip().splitlines()[0])
+            overlay = _json.loads(overlay_path.read_text().strip().splitlines()[0])
+        base_path = Path("data/out") / doc_id / "documents.jsonl"
+        if base_path.exists():
+            base_meta = _json.loads(base_path.read_text().strip().splitlines()[0])
 
     return templates.TemplateResponse(
         "document_detail.html",
@@ -218,6 +228,7 @@ async def document_detail(request: Request, doc_id: str):
             "figures": figures,
             "versions": versions,
             "overlay": overlay,
+            "base_meta": base_meta,
         },
     )
 
@@ -253,27 +264,37 @@ async def save_overlay(request: Request, doc_id: str, reindex: bool = False):
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
 
     body = await request.json()
-    # Filter to editable fields only
+    # Filter to editable fields only — this is the complete new overlay (replaces old)
     overlay = {k: v for k, v in body.items() if k in db._EDITABLE_COLUMNS}
-    if not overlay:
-        return JSONResponse({"error": "No valid fields provided"}, status_code=400)
 
-    # Save overlay to S3 or local filesystem
+    # Save overlay to S3 or local filesystem (delete if empty)
     if config.s3_bucket:
         s3_client = s3.get_client()
-        s3.upload_overlay(s3_client, config.s3_bucket, doc_id, overlay)
+        if overlay:
+            s3.upload_overlay(s3_client, config.s3_bucket, doc_id, overlay)
+        else:
+            try:
+                s3_client.delete_object(
+                    Bucket=config.s3_bucket, Key=f"processed/{doc_id}/documents_overlay.jsonl"
+                )
+            except Exception:
+                pass
     else:
         import json
 
         overlay_path = Path("data/out") / doc_id / "documents_overlay.jsonl"
-        overlay_path.write_text(json.dumps(overlay, ensure_ascii=False) + "\n")
+        if overlay:
+            overlay_path.write_text(json.dumps(overlay, ensure_ascii=False) + "\n")
+        elif overlay_path.exists():
+            overlay_path.unlink()
 
-    # Update DB directly for immediate visibility
-    conn = db.get_connection(config)
-    try:
-        db.update_document_metadata(conn, doc_id, overlay)
-    finally:
-        conn.close()
+    # Update DB directly for immediate visibility — merge base + overlay
+    if overlay:
+        conn = db.get_connection(config)
+        try:
+            db.update_document_metadata(conn, doc_id, overlay)
+        finally:
+            conn.close()
 
     # Optionally trigger reindex
     if reindex and config.s3_bucket:
