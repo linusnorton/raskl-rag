@@ -18,7 +18,8 @@ from ras_docproc.utils.io import ensure_dir
 logger = logging.getLogger(__name__)
 
 THUMB_SIZE = (200, 200)
-FULL_PAGE_AREA_THRESHOLD = 0.90  # Skip images covering ≥90% of page area
+FULL_PAGE_AREA_THRESHOLD = 0.90  # Skip images covering ≥90% of page area (pages with text spans)
+SCAN_BG_THRESHOLD = 0.70  # On pages with no text spans, images ≥70% are scan backgrounds
 
 
 def detect_figures(
@@ -54,14 +55,19 @@ def detect_figures(
     rendered_scans = 0
     rendered_scan_pages: set[int] = set()  # Track pages already rendered to avoid duplicates
 
+    # Pages with no MuPDF text spans are pure image scans (no OCR layer).
+    # Use a lower threshold to skip scan background images on these pages.
+    textless_pages = {pn for pn, pd in mupdf_data.items() if not pd.spans}
+
     # Pre-check which pages have non-fullpage images (i.e. real embedded figures).
     # If a page has real figures, don't render the full-page scan — the real figures are better.
     pages_with_real_images: set[int] = set()
     for page_num, page_data in mupdf_data.items():
         page_area = page_data.width * page_data.height
+        threshold = SCAN_BG_THRESHOLD if page_num in textless_pages else FULL_PAGE_AREA_THRESHOLD
         for img_info in page_data.images:
             if page_area > 0 and img_info.bbox:
-                if img_info.bbox.area < FULL_PAGE_AREA_THRESHOLD * page_area:
+                if img_info.bbox.area < threshold * page_area:
                     pages_with_real_images.add(page_num)
                     break
 
@@ -71,7 +77,8 @@ def detect_figures(
             # Filter out full-page scan images (background scans in scanned PDFs)
             if page_area > 0 and img_info.bbox:
                 img_area = img_info.bbox.area
-                if img_area >= FULL_PAGE_AREA_THRESHOLD * page_area:
+                threshold = SCAN_BG_THRESHOLD if page_num in textless_pages else FULL_PAGE_AREA_THRESHOLD
+                if img_area >= threshold * page_area:
                     # If the VL model detected a figure on this page AND there are no
                     # real embedded images, render the scan as a figure.
                     # Skip if the page already has real images — they'll be extracted normally.
@@ -141,6 +148,8 @@ def detect_figures(
             if rendered_fig:
                 figures.append(rendered_fig)
 
+    if textless_pages:
+        logger.info("Detected %d textless pages (pure image scans, threshold=%.0f%%)", len(textless_pages), SCAN_BG_THRESHOLD * 100)
     if skipped_scans > 0:
         logger.info("Skipped %d full-page scan images", skipped_scans)
     if rendered_scans > 0:

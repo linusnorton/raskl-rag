@@ -264,6 +264,28 @@ metadata.
 `metadata_sources`. The `editor` field (previously defined but never populated) is now filled by
 CrossRef and LLM extraction. All new fields are nullable/empty-list so existing data is unaffected.
 
+### D10 — Scan background detection for figure extraction
+
+**Problem:** Scanned PDFs embed each page as a single large image. JSTOR scans cover ~95% of page
+area and were caught by the 90% `FULL_PAGE_AREA_THRESHOLD`. But Google Books scans have wider
+margins, so page images cover only ~85% — below the 90% threshold, causing every text page to be
+extracted as a "figure."
+
+**What we chose:** A two-tier threshold based on whether the page has MuPDF text spans. Pages with
+no text spans are pure image scans (no OCR layer), so any large image (≥70% `SCAN_BG_THRESHOLD`)
+is a scan background and should be skipped. Pages with text spans are born-digital or OCR'd, and
+keep the original 90% threshold.
+
+**Why text spans work as a signal:** Born-digital PDFs always have text spans. Scanned PDFs with an
+OCR layer also have text spans (from the invisible text overlay). Only pure image scans — where
+MuPDF extracts zero text — lack spans entirely. This cleanly separates "scan background" images
+from legitimate large illustrations in born-digital documents.
+
+**Safety net:** If the VL model flagged a page with `![Figure]()` tags, the scan background is
+rendered as a figure instead of skipped — the VL model correctly identifies real illustrations
+even in scanned pages. Smaller images on the same page (e.g. an embedded illustration at 27% area)
+are still extracted normally regardless of the threshold.
+
 ## Output format
 
 All output goes to `data/out/{doc_id}/`:
