@@ -40,7 +40,7 @@ class RAGConfig(BaseSettings):
     model_studio_base_url: str = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
     model_studio_chat_model_id: str = "qwen3.5-397b-a17b"
     model_studio_embed_model_id: str = "text-embedding-v4"
-    model_studio_rerank_model_id: str = "qwen3-reranker-8b"
+    model_studio_rerank_model_id: str = "qwen3-rerank"
 
     # Extended thinking (0 = disabled)
     llm_thinking_budget: int = 2048
