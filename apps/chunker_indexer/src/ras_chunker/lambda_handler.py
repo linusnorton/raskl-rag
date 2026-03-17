@@ -73,6 +73,15 @@ def lambda_handler(event, context):
                 prefix = f"{s3_prefix}/"
                 _download_version(bucket, prefix, tmpdir, doc_id)
 
+                # Download metadata overlay (lives outside version directory)
+                doc_dir = tmpdir / "out" / doc_id
+                overlay_key = f"processed/{doc_id}/documents_overlay.jsonl"
+                try:
+                    s3.download_file(bucket, overlay_key, str(doc_dir / "documents_overlay.jsonl"))
+                    logger.info("Downloaded overlay: %s", overlay_key)
+                except Exception:
+                    pass  # No overlay is the normal case
+
                 # Run chunk + embed + index
                 _run_chunk_and_index(doc_id, tmpdir, version, s3_prefix=s3_prefix)
                 logger.info("Indexing complete: doc_id=%s v%d", doc_id, version)

@@ -191,13 +191,21 @@ async def document_detail(request: Request, doc_id: str):
     finally:
         conn.close()
 
-    # Get S3 versions
+    # Get S3 versions and overlay
     versions = []
+    overlay = {}
     if config.s3_bucket:
         s3_client = s3.get_client()
         versions = s3.list_versions(s3_client, config.s3_bucket, doc_id)
         for v in versions:
             v["meta"] = s3.get_version_meta(s3_client, config.s3_bucket, v["prefix"])
+        overlay = s3.download_overlay(s3_client, config.s3_bucket, doc_id) or {}
+    else:
+        overlay_path = Path("data/out") / doc_id / "documents_overlay.jsonl"
+        if overlay_path.exists():
+            import json
+
+            overlay = json.loads(overlay_path.read_text().strip().splitlines()[0])
 
     return templates.TemplateResponse(
         "document_detail.html",
@@ -209,8 +217,77 @@ async def document_detail(request: Request, doc_id: str):
             "chunks": chunks,
             "figures": figures,
             "versions": versions,
+            "overlay": overlay,
         },
     )
+
+
+# --- Metadata Overlay ---
+
+
+@app.get("/api/documents/{doc_id}/overlay")
+async def get_overlay(request: Request, doc_id: str):
+    user = _user_or_redirect(request)
+    if user is None:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    if config.s3_bucket:
+        s3_client = s3.get_client()
+        overlay = s3.download_overlay(s3_client, config.s3_bucket, doc_id) or {}
+    else:
+        overlay_path = Path("data/out") / doc_id / "documents_overlay.jsonl"
+        if overlay_path.exists():
+            import json
+
+            overlay = json.loads(overlay_path.read_text().strip().splitlines()[0])
+        else:
+            overlay = {}
+
+    return JSONResponse(overlay)
+
+
+@app.put("/api/documents/{doc_id}/overlay")
+async def save_overlay(request: Request, doc_id: str, reindex: bool = False):
+    user = _user_or_redirect(request)
+    if user is None:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    body = await request.json()
+    # Filter to editable fields only
+    overlay = {k: v for k, v in body.items() if k in db._EDITABLE_COLUMNS}
+    if not overlay:
+        return JSONResponse({"error": "No valid fields provided"}, status_code=400)
+
+    # Save overlay to S3 or local filesystem
+    if config.s3_bucket:
+        s3_client = s3.get_client()
+        s3.upload_overlay(s3_client, config.s3_bucket, doc_id, overlay)
+    else:
+        import json
+
+        overlay_path = Path("data/out") / doc_id / "documents_overlay.jsonl"
+        overlay_path.write_text(json.dumps(overlay, ensure_ascii=False) + "\n")
+
+    # Update DB directly for immediate visibility
+    conn = db.get_connection(config)
+    try:
+        db.update_document_metadata(conn, doc_id, overlay)
+    finally:
+        conn.close()
+
+    # Optionally trigger reindex
+    if reindex and config.s3_bucket:
+        s3_client = s3.get_client()
+        versions = s3.list_versions(s3_client, config.s3_bucket, doc_id)
+        if versions:
+            latest = versions[-1]
+            s3.trigger_reindex(s3_client, config.s3_bucket, doc_id, latest["version"])
+            return JSONResponse({"ok": True, "message": "Metadata saved, reindexing triggered"})
+
+    msg = "Metadata saved"
+    if reindex and not config.s3_bucket:
+        msg += f". Run: uv run ras-chunker index --doc-id {doc_id}"
+    return JSONResponse({"ok": True, "message": msg})
 
 
 # --- Document Actions (API endpoints) ---

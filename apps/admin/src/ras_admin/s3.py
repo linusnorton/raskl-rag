@@ -194,6 +194,27 @@ def presign_get(s3, bucket: str, key: str, expires_in: int = 3600) -> str:
     )
 
 
+def download_overlay(s3, bucket: str, doc_id: str) -> dict[str, Any] | None:
+    """Read metadata overlay for a document. Returns parsed dict or None."""
+    key = f"processed/{doc_id}/documents_overlay.jsonl"
+    text = download_jsonl(s3, bucket, key)
+    if text is None:
+        return None
+    first_line = text.strip().splitlines()[0]
+    return json.loads(first_line)
+
+
+def upload_overlay(s3, bucket: str, doc_id: str, overlay: dict[str, Any]) -> None:
+    """Write metadata overlay for a document."""
+    key = f"processed/{doc_id}/documents_overlay.jsonl"
+    s3.put_object(
+        Bucket=bucket,
+        Key=key,
+        Body=json.dumps(overlay, ensure_ascii=False) + "\n",
+        ContentType="application/jsonl",
+    )
+
+
 def reprocess_all(s3, bucket: str) -> list[str]:
     """Trigger reprocessing for all uploaded PDFs. Returns filenames."""
     pdf_keys = list_uploaded_pdfs(s3, bucket)

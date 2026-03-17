@@ -105,9 +105,13 @@ class DocprocOutput:
     def __init__(self, doc_dir: Path) -> None:
         self.doc_dir = doc_dir
 
-        # Load document metadata
+        # Load document metadata (with optional overlay merge)
         docs_path = doc_dir / "documents.jsonl"
         raw = json.loads(docs_path.read_text().strip().splitlines()[0])
+        overlay_path = doc_dir / "documents_overlay.jsonl"
+        if overlay_path.exists():
+            overlay = json.loads(overlay_path.read_text().strip().splitlines()[0])
+            raw.update(overlay)
         self.meta = DocMeta(
             doc_id=raw["doc_id"],
             source_filename=raw["source_filename"],

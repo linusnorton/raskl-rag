@@ -14,15 +14,52 @@
 <div id="actionMsg"></div>
 
 <div class="card">
-  <h2>Latest Metadata</h2>
-  <table class="meta-table">
+  <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
+    <h2 style="margin:0; flex:1;">Metadata</h2>
+    <div id="metaViewBtns">
+      <button class="btn btn-secondary" onclick="startEdit()">Edit</button>
+    </div>
+    <div id="metaEditBtns" style="display:none; gap:8px;">
+      <button class="btn btn-primary" onclick="saveOverlay(false)">Save</button>
+      <button class="btn btn-primary" onclick="saveOverlay(true)" style="background:#059669;">Save &amp; Reindex</button>
+      <button class="btn btn-secondary" onclick="cancelEdit()">Cancel</button>
+    </div>
+  </div>
+  <table class="meta-table" id="metaTable">
     <tr><td>Doc ID</td><td class="mono">{{ doc.doc_id }}</td></tr>
-    <tr><td>Title</td><td>{{ doc.title or "-" }}</td></tr>
-    <tr><td>Author</td><td>{{ doc.author or "-" }}</td></tr>
-    <tr><td>Year</td><td>{{ doc.year or "-" }}</td></tr>
-    <tr><td>Publication</td><td>{{ doc.publication or "-" }}</td></tr>
-    <tr><td>Type</td><td>{{ doc.document_type or "-" }}</td></tr>
-    <tr><td>Page Offset</td><td>{{ doc.page_offset }}</td></tr>
+    {% set editable_fields = [
+      ('title', 'Title', 'text'),
+      ('author', 'Author', 'text'),
+      ('editor', 'Editor', 'text'),
+      ('year', 'Year', 'number'),
+      ('publication', 'Publication', 'text'),
+      ('document_type', 'Type', 'text'),
+      ('abstract', 'Abstract', 'textarea'),
+      ('keywords', 'Keywords', 'text'),
+      ('language', 'Language', 'text'),
+      ('description', 'Description', 'textarea'),
+      ('series', 'Series', 'text'),
+      ('isbn', 'ISBN', 'text'),
+      ('issn', 'ISSN', 'text'),
+      ('page_offset', 'Page Offset', 'number'),
+    ] %}
+    {% for field, label, ftype in editable_fields %}
+    <tr data-field="{{ field }}" data-type="{{ ftype }}">
+      <td>
+        {{ label }}
+        {% if field in overlay %}
+        <span class="badge badge-blue" style="font-size:0.7em; margin-left:4px;" title="Overridden by overlay">override</span>
+        {% endif %}
+      </td>
+      <td class="meta-value">
+        {% if field == 'keywords' %}
+          {{ (doc[field] or [])|join(', ') or '-' }}
+        {% else %}
+          {{ doc[field] if doc[field] is not none and doc[field] != '' else '-' }}
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
     <tr><td>SHA256</td><td class="mono" style="font-size:0.75em;word-break:break-all;">{{ doc.sha256_pdf }}</td></tr>
     <tr><td>Indexed</td><td>{{ doc.indexed_at.strftime('%Y-%m-%d %H:%M:%S') if doc.indexed_at else "-" }}</td></tr>
   </table>
@@ -105,6 +142,18 @@
 
 <script>
 const DOC_ID = "{{ doc.doc_id }}";
+const overlay = {{ overlay | tojson }};
+
+// Current DB values for diffing
+const dbValues = {
+  {% for field, label, ftype in editable_fields %}
+  {% if field == 'keywords' %}
+  '{{ field }}': {{ (doc[field] or []) | tojson }},
+  {% else %}
+  '{{ field }}': {{ doc[field] | tojson }},
+  {% endif %}
+  {% endfor %}
+};
 
 async function apiCall(url, method='POST') {
   const resp = await fetch(url, {method});
@@ -124,6 +173,124 @@ function deleteDoc() {
   apiCall(`/api/documents/${DOC_ID}`, 'DELETE').then(() => {
     setTimeout(() => window.location = '/documents', 1000);
   });
+}
+
+// --- Metadata Edit Mode ---
+
+let savedDisplayValues = {};
+
+function startEdit() {
+  document.getElementById('metaViewBtns').style.display = 'none';
+  document.getElementById('metaEditBtns').style.display = 'flex';
+
+  document.querySelectorAll('#metaTable tr[data-field]').forEach(row => {
+    const field = row.dataset.field;
+    const type = row.dataset.type;
+    const cell = row.querySelector('.meta-value');
+    savedDisplayValues[field] = cell.innerHTML;
+
+    let val = dbValues[field];
+    if (field === 'keywords') {
+      val = Array.isArray(val) ? val.join(', ') : (val || '');
+    }
+    if (val === null || val === undefined) val = '';
+
+    if (type === 'textarea') {
+      cell.innerHTML = `<textarea data-field="${field}" style="width:100%; min-height:80px; padding:6px 8px; font-size:0.9em; border:1px solid #cbd5e1; border-radius:4px; resize:vertical;">${escapeHtml(String(val))}</textarea>`;
+    } else if (type === 'number') {
+      cell.innerHTML = `<input type="number" data-field="${field}" value="${escapeHtml(String(val))}" style="width:120px; padding:6px 8px; font-size:0.9em; border:1px solid #cbd5e1; border-radius:4px;">`;
+    } else {
+      cell.innerHTML = `<input type="text" data-field="${field}" value="${escapeHtml(String(val))}" style="width:100%; padding:6px 8px; font-size:0.9em; border:1px solid #cbd5e1; border-radius:4px;">`;
+    }
+  });
+}
+
+function cancelEdit() {
+  document.getElementById('metaViewBtns').style.display = '';
+  document.getElementById('metaEditBtns').style.display = 'none';
+
+  document.querySelectorAll('#metaTable tr[data-field]').forEach(row => {
+    const field = row.dataset.field;
+    const cell = row.querySelector('.meta-value');
+    cell.innerHTML = savedDisplayValues[field];
+  });
+}
+
+async function saveOverlay(reindex) {
+  const newOverlay = {};
+
+  document.querySelectorAll('#metaTable [data-field]').forEach(input => {
+    if (input.tagName === 'TR') return;
+    const field = input.dataset.field;
+    let val = input.value.trim();
+
+    if (field === 'year' || field === 'page_offset') {
+      val = val === '' ? null : parseInt(val, 10);
+      if (val !== null && isNaN(val)) val = null;
+    } else if (field === 'keywords') {
+      val = val ? val.split(',').map(s => s.trim()).filter(Boolean) : [];
+    } else {
+      val = val || null;
+    }
+
+    newOverlay[field] = val;
+  });
+
+  const url = `/api/documents/${DOC_ID}/overlay` + (reindex ? '?reindex=true' : '');
+  const resp = await fetch(url, {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(newOverlay),
+  });
+  const data = await resp.json();
+  const msg = document.getElementById('actionMsg');
+
+  if (resp.ok) {
+    msg.innerHTML = `<div class="msg msg-ok">${data.message}</div>`;
+    // Update display values and exit edit mode
+    for (const [field, val] of Object.entries(newOverlay)) {
+      dbValues[field] = val;
+    }
+    exitEditMode(newOverlay);
+  } else {
+    msg.innerHTML = `<div class="msg msg-err">${data.error || 'Save failed'}</div>`;
+  }
+}
+
+function exitEditMode(newOverlay) {
+  document.getElementById('metaViewBtns').style.display = '';
+  document.getElementById('metaEditBtns').style.display = 'none';
+
+  document.querySelectorAll('#metaTable tr[data-field]').forEach(row => {
+    const field = row.dataset.field;
+    const cell = row.querySelector('.meta-value');
+    let val = dbValues[field];
+
+    if (field === 'keywords') {
+      val = Array.isArray(val) ? val.join(', ') : '';
+    }
+    cell.textContent = (val !== null && val !== undefined && val !== '') ? String(val) : '-';
+
+    // Update override badge
+    const label = row.querySelector('td:first-child');
+    const existingBadge = label.querySelector('.badge');
+    if (existingBadge) existingBadge.remove();
+
+    if (newOverlay && field in newOverlay) {
+      const badge = document.createElement('span');
+      badge.className = 'badge badge-blue';
+      badge.style.cssText = 'font-size:0.7em; margin-left:4px;';
+      badge.title = 'Overridden by overlay';
+      badge.textContent = 'override';
+      label.appendChild(badge);
+    }
+  });
+}
+
+function escapeHtml(s) {
+  const div = document.createElement('div');
+  div.textContent = s;
+  return div.innerHTML;
 }
 
 // --- JSONL Tabbed Viewer ---

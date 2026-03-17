@@ -105,6 +105,41 @@ def get_figures_for_doc(conn: psycopg.Connection, doc_id: str) -> list[dict[str,
         return [dict(zip(cols, row)) for row in cur.fetchall()]
 
 
+_EDITABLE_COLUMNS = frozenset({
+    "title", "author", "editor", "year", "publication", "document_type",
+    "abstract", "keywords", "language", "isbn", "issn", "series",
+    "description", "page_offset",
+})
+
+
+def update_document_metadata(conn: psycopg.Connection, doc_id: str, fields: dict[str, Any]) -> bool:
+    """Update editable metadata fields for a document."""
+    # Filter to allowed columns only
+    safe = {k: v for k, v in fields.items() if k in _EDITABLE_COLUMNS}
+    if not safe:
+        return False
+
+    # Type coercion
+    if "year" in safe:
+        safe["year"] = int(safe["year"]) if safe["year"] not in (None, "", "null") else None
+    if "page_offset" in safe:
+        safe["page_offset"] = int(safe["page_offset"]) if safe["page_offset"] not in (None, "", "null") else 0
+    if "keywords" in safe:
+        kw = safe["keywords"]
+        if isinstance(kw, str):
+            safe["keywords"] = [k.strip() for k in kw.split(",") if k.strip()]
+        elif kw is None:
+            safe["keywords"] = []
+
+    set_clause = ", ".join(f"{col} = %({col})s" for col in safe)
+    safe["doc_id"] = doc_id
+    with conn.cursor() as cur:
+        cur.execute(f"UPDATE documents SET {set_clause} WHERE doc_id = %(doc_id)s", safe)  # noqa: S608
+        updated = cur.rowcount > 0
+    conn.commit()
+    return updated
+
+
 def delete_document(conn: psycopg.Connection, doc_id: str) -> bool:
     """Delete a document (CASCADE deletes chunks, figures, chunk_changes)."""
     with conn.cursor() as cur:
