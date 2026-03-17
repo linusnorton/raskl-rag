@@ -12,6 +12,7 @@
     <button class="btn btn-primary" id="bulkReprocessBtn" style="display:none;" onclick="bulkReprocess()">Reprocess Selected</button>
     <button class="btn btn-secondary" id="bulkReindexBtn" style="display:none;" onclick="bulkReindex()">Reindex Selected</button>
     <button class="btn btn-danger" id="bulkDeleteBtn" style="display:none;" onclick="bulkDelete()">Delete Selected</button>
+    <button class="btn btn-danger" onclick="reprocessAll()">Reprocess All</button>
   </div>
 </div>
 
@@ -76,6 +77,12 @@ async function bulkReprocess() {
   });
   if (resp.ok) { const data = await resp.json(); alert(data.message); location.reload(); }
   else alert('Reprocess failed');
+}
+async function reprocessAll() {
+  if (!confirm('Reprocess all documents? This will re-run OCR on every PDF.')) return;
+  const resp = await fetch('/api/upload/reprocess-all', {method: 'POST'});
+  if (resp.ok) window.location = '/';
+  else alert('Reprocess all failed');
 }
 async function bulkReindex() {
   const ids = [...document.querySelectorAll('.doc-checkbox:checked')].map(cb => cb.value);
