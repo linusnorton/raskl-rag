@@ -1,0 +1,22 @@
+# Open WebUI connected to the Alibaba Cloud RAG API.
+# Usage: docker compose -f docker-compose.alibaba.yml up -d
+services:
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    ports:
+      - "3001:8080"
+    environment:
+      OPENAI_API_BASE_URLS: "https://raskl-rag-api-rsxcnkcipr.ap-southeast-1.fcapp.run/v1"
+      OPENAI_API_KEYS: "swetbot2-api-key-abc123"
+      ENABLE_OLLAMA_API: "false"
+      WEBUI_AUTH: "true"
+      AIOHTTP_CLIENT_TIMEOUT: "300"
+      ENABLE_EVALUATION_ARENA_MODELS: "false"
+      ENABLE_WEBSOCKET_SUPPORT: "false"
+      WEBUI_NAME: "SwetBot (Alibaba)"
+      # No STT/TTS (deferred on Alibaba stack)
+    volumes:
+      - open-webui-alibaba:/app/backend/data
+
+volumes:
+  open-webui-alibaba:
