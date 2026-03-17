@@ -19,7 +19,7 @@ output "admin_url" {
   value       = "https://${local.account_id}.${var.region}.fc.aliyuncs.com/2016-08-15/proxy/${alicloud_fc_service.main.name}/${alicloud_fc_function.admin.name}/"
 }
 
-output "ghcr_prefix" {
-  description = "GHCR image prefix"
-  value       = local.ghcr_prefix
+output "fc_service" {
+  description = "FC service name"
+  value       = alicloud_fc_service.main.name
 }
