@@ -40,12 +40,13 @@ build_app() {
         fi
     done
 
-    # Write bootstrap
+    # Write bootstrap — uses Python 3.10 from the Python310 FC layer (/opt/python3.10/bin/)
     cat > "$workdir/code/bootstrap" << BOOT
 #!/bin/bash
 cd /code
+export PATH=/opt/python3.10/bin:\$PATH
 export PYTHONPATH=/code
-exec python3 -m $entrypoint
+exec python3.10 -m $entrypoint
 BOOT
     chmod +x "$workdir/code/bootstrap"
 

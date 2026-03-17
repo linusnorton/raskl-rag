@@ -1,4 +1,5 @@
-# --- SLS (Simple Log Service, equivalent to CloudWatch Logs) ---
+# --- SLS (Simple Log Service) ---
+# FC 3.0 has built-in logging, but we keep SLS for custom log queries.
 
 resource "alicloud_log_project" "main" {
   project_name = "${local.prefix}-logs"

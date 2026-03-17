@@ -10,16 +10,11 @@ output "neon_host" {
 }
 
 output "rag_api_url" {
-  description = "RAG API Function Compute HTTP trigger URL"
-  value       = "https://${local.account_id}.${var.region}.fc.aliyuncs.com/2016-08-15/proxy/${alicloud_fc_service.main.name}/${alicloud_fc_function.rag_api.name}/"
+  description = "RAG API FC3 HTTP trigger URL"
+  value       = alicloud_fcv3_trigger.rag_api_http.http_trigger[0].url_internet
 }
 
 output "admin_url" {
-  description = "Admin UI Function Compute HTTP trigger URL"
-  value       = "https://${local.account_id}.${var.region}.fc.aliyuncs.com/2016-08-15/proxy/${alicloud_fc_service.main.name}/${alicloud_fc_function.admin.name}/"
-}
-
-output "fc_service" {
-  description = "FC service name"
-  value       = alicloud_fc_service.main.name
+  description = "Admin FC3 HTTP trigger URL"
+  value       = alicloud_fcv3_trigger.admin_http.http_trigger[0].url_internet
 }
