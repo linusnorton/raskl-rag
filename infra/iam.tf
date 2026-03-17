@@ -62,21 +62,6 @@ resource "aws_iam_role_policy" "lambda_bedrock" {
   })
 }
 
-# SES send access (diff notification emails)
-resource "aws_iam_role_policy" "lambda_ses" {
-  name = "${local.prefix}-ses"
-  role = aws_iam_role.lambda_exec.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect   = "Allow"
-      Action   = ["ses:SendEmail", "ses:SendRawEmail"]
-      Resource = "*"
-    }]
-  })
-}
-
 # Transcribe access (STT via RAG API)
 resource "aws_iam_role_policy" "lambda_transcribe" {
   name = "${local.prefix}-transcribe"
@@ -217,11 +202,6 @@ resource "aws_iam_role_policy" "github_actions" {
       {
         Effect   = "Allow"
         Action   = ["execute-api:*", "apigateway:*"]
-        Resource = "*"
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["ses:*"]
         Resource = "*"
       },
       {

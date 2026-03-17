@@ -1,4 +1,4 @@
-"""AWS Lambda handler: S3 event → download PDF → Qwen3 VL OCR → pipeline → versioned S3 output → diff + email."""
+"""AWS Lambda handler: S3 event → download PDF → Qwen3 VL OCR → pipeline → versioned S3 output."""
 
 from __future__ import annotations
 
@@ -215,9 +215,8 @@ def _upload_versioned_output(bucket: str, doc_id: str, data_dir: Path, tmpdir: P
 
 
 def _diff_and_notify(bucket: str, doc_id: str, version: int, new_dir: Path, tmpdir: Path) -> None:
-    """Download previous version, diff, and send email notification."""
+    """Download previous version and log diff summary."""
     from ras_docproc.diff import diff_versions
-    from ras_docproc.notify import send_diff_email
 
     prev_dir = _download_previous_version(bucket, doc_id, version, tmpdir)
     if prev_dir is None:
@@ -235,9 +234,3 @@ def _diff_and_notify(bucket: str, doc_id: str, version: int, new_dir: Path, tmpd
         report.blocks_changed,
         report.blocks_unchanged,
     )
-
-    try:
-        region = os.environ.get("DOCPROC_BEDROCK_REGION", "eu-west-2")
-        send_diff_email(report, region=region)
-    except Exception:
-        logger.exception("Failed to send diff email for %s v%d", doc_id, version)
