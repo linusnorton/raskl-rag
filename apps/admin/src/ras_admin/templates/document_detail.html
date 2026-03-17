@@ -121,7 +121,7 @@
 <div class="card">
   <h2>JSONL Viewer</h2>
   <div style="display:flex; gap:4px; margin-bottom:12px; flex-wrap:wrap;" id="jsonlTabs">
-    {% set jsonl_files = ['documents.jsonl', 'text_blocks.jsonl', 'pages.jsonl', 'footnotes.jsonl', 'footnote_refs.jsonl', 'figures.jsonl', 'removed_blocks.jsonl', 'plates.jsonl'] %}
+    {% set jsonl_files = ['documents.jsonl', 'documents_overlay.jsonl', 'text_blocks.jsonl', 'pages.jsonl', 'footnotes.jsonl', 'footnote_refs.jsonl', 'figures.jsonl', 'removed_blocks.jsonl', 'plates.jsonl'] %}
     {% for f in jsonl_files %}
     <button class="btn {% if loop.first %}btn-primary{% else %}btn-secondary{% endif %}" onclick="loadJsonlTab('{{ f }}', this)" data-filename="{{ f }}">{{ f }}</button>
     {% endfor %}
@@ -216,9 +216,15 @@ function cancelEdit() {
   });
 }
 
-async function saveOverlay(reindex) {
-  const newOverlay = {};
+function valuesEqual(a, b) {
+  if (Array.isArray(a) && Array.isArray(b)) return JSON.stringify(a) === JSON.stringify(b);
+  if ((a === null || a === undefined || a === '') && (b === null || b === undefined || b === '')) return true;
+  return a === b;
+}
 
+async function saveOverlay(reindex) {
+  // Collect all current input values
+  const allValues = {};
   document.querySelectorAll('#metaTable [data-field]').forEach(input => {
     if (input.tagName === 'TR') return;
     const field = input.dataset.field;
@@ -233,14 +239,28 @@ async function saveOverlay(reindex) {
       val = val || null;
     }
 
-    newOverlay[field] = val;
+    allValues[field] = val;
   });
+
+  // Build sparse overlay: only fields that differ from original DB values
+  const newOverlay = {};
+  for (const [field, val] of Object.entries(allValues)) {
+    if (!valuesEqual(val, dbValues[field])) {
+      newOverlay[field] = val;
+    }
+  }
+
+  if (Object.keys(newOverlay).length === 0 && !reindex) {
+    document.getElementById('actionMsg').innerHTML = '<div class="msg msg-ok">No changes to save</div>';
+    cancelEdit();
+    return;
+  }
 
   const url = `/api/documents/${DOC_ID}/overlay` + (reindex ? '?reindex=true' : '');
   const resp = await fetch(url, {
     method: 'PUT',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify(newOverlay),
+    body: JSON.stringify(Object.keys(newOverlay).length > 0 ? newOverlay : allValues),
   });
   const data = await resp.json();
   const msg = document.getElementById('actionMsg');
@@ -248,7 +268,7 @@ async function saveOverlay(reindex) {
   if (resp.ok) {
     msg.innerHTML = `<div class="msg msg-ok">${data.message}</div>`;
     // Update display values and exit edit mode
-    for (const [field, val] of Object.entries(newOverlay)) {
+    for (const [field, val] of Object.entries(allValues)) {
       dbValues[field] = val;
     }
     exitEditMode(newOverlay);

@@ -469,6 +469,15 @@ async def get_jsonl_file(request: Request, doc_id: str, filename: str):
         return JSONResponse({"error": "S3 not configured"}, status_code=400)
 
     s3_client = s3.get_client()
+
+    # Overlay lives outside version directories
+    if filename == "documents_overlay.jsonl":
+        key = f"processed/{doc_id}/documents_overlay.jsonl"
+        records = s3.download_jsonl_as_list(s3_client, config.s3_bucket, key)
+        if records is None:
+            return JSONResponse({"error": f"File {filename} not found"}, status_code=404)
+        return JSONResponse(records)
+
     prefix = s3.get_latest_version_prefix(s3_client, config.s3_bucket, doc_id)
     if not prefix:
         return JSONResponse({"error": "No versions found"}, status_code=404)
