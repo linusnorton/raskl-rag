@@ -10,7 +10,7 @@ class RAGConfig(BaseSettings):
 
     # Chat LLM
     llm_max_tokens: int = 4096
-    llm_context_window: int = 40960
+    llm_context_window: int = 65536
     llm_temperature: float = 0.5
 
     # Embedding
@@ -19,7 +19,7 @@ class RAGConfig(BaseSettings):
 
     # Reranker
     rerank_enabled: bool = True
-    rerank_candidates: int = 30
+    rerank_candidates: int = 60
     rerank_instruction: str = (
         "Given a user question about historical JMBRAS and Swettenham journal documents, "
         "judge whether the document passage is relevant"
@@ -47,7 +47,10 @@ class RAGConfig(BaseSettings):
     llm_thinking_budget: int = 2048
 
     # Retrieval
-    retrieval_top_k: int = 15
+    retrieval_top_k: int = 20
+
+    # Diversity — cap chunks per document in rerank candidates (0 = disabled)
+    diversity_max_per_doc: int = 10
 
     # Database
     db_host: str = "localhost"

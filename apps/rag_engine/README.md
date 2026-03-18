@@ -67,15 +67,28 @@ place names. A query like "Swettenham 1875 Singapore" benefits from both.
 **Why RRF constant 60:** Standard value from the RRF literature. Prevents the score from blowing
 up for rank-1 results while still rewarding items that rank highly in both systems.
 
-### D2 — Three-stage retrieval: search → rerank → top-k
+### D2 — Four-stage retrieval: search → diversity cap → rerank → top-k
 
-**What we chose:** Retrieval fetches `rerank_candidates` (default 30) chunks via hybrid search,
-then a reranker scores and re-orders them, returning the final `retrieval_top_k` (default 15).
+**What we chose:** Retrieval fetches up to 180 RRF-fused chunks via hybrid search (100 vector +
+100 FTS candidates), applies a per-document diversity cap, then reranks the top
+`rerank_candidates` (default 60) and returns the final `retrieval_top_k` (default 20).
+
+**Per-document diversity cap:** After RRF fusion, a cap (`diversity_max_per_doc`, default 10)
+limits how many chunks any single document can contribute to the rerank candidate set. Chunks
+are processed in RRF score order — once a document hits the cap, its remaining chunks are
+skipped in favour of chunks from other documents. This prevents long monographs from dominating
+all candidate slots. Set to 0 to disable.
 
 **Reranking:** The reranker prepends document metadata (author, title) to each chunk's text
 before scoring, giving the model richer context for relevance judgement. Cohere Rerank 3.5
 is used in production, chosen for its strong multilingual support (+26.4% on cross-lingual
 search benchmarks) which benefits this corpus's mix of English, Malay, Chinese, and Arabic.
+
+**Why the diversity cap:** Without it, queries about well-documented topics (e.g. "who was Yap
+Ah Loy") return all citations from a single 172-page monograph. The monograph has many
+individually high-scoring chunks, so it dominates vector search, FTS, RRF, and reranking —
+leaving no room for other documents. The cap ensures the reranker sees candidates from multiple
+sources, producing a more balanced final result.
 
 **Why rerank:** Hybrid search produces a good candidate set but RRF scores are noisy — a chunk
 that ranks #1 in vector search and #50 in FTS gets the same RRF score as one that ranks #25 in
@@ -352,11 +365,12 @@ Key environment variables (prefix `CHAT_`):
 |----------|---------|-------------|
 | `CHAT_LLM_TEMPERATURE` | `0.5` | LLM temperature |
 | `CHAT_LLM_MAX_TOKENS` | `4096` | Max output tokens (excluding thinking) |
-| `CHAT_LLM_CONTEXT_WINDOW` | `40960` | Total context window size |
+| `CHAT_LLM_CONTEXT_WINDOW` | `65536` | Total context window size |
 | `CHAT_LLM_THINKING_BUDGET` | `2048` | Extended thinking token budget |
-| `CHAT_RETRIEVAL_TOP_K` | `15` | Final number of chunks after reranking |
+| `CHAT_RETRIEVAL_TOP_K` | `20` | Final number of chunks after reranking |
 | `CHAT_RERANK_ENABLED` | `true` | Enable reranking stage |
-| `CHAT_RERANK_CANDIDATES` | `30` | Chunks to fetch before reranking |
+| `CHAT_RERANK_CANDIDATES` | `60` | Chunks to fetch before reranking |
+| `CHAT_DIVERSITY_MAX_PER_DOC` | `10` | Max chunks per document in rerank candidates (0=off) |
 | `CHAT_EMBED_TASK_PREFIX` | `""` | Query embedding prefix |
 | `CHAT_EMBED_DIMENSIONS` | `1024` | Embedding vector dimensions |
 | `CHAT_WEB_SEARCH_ENABLED` | `true` | Include web_search tool |

@@ -71,7 +71,7 @@ WITH vector_results AS (
       AND (%(language)s::text IS NULL OR d_v.language = %(language)s)
       AND (%(publication)s::text IS NULL OR d_v.publication = %(publication)s)
     ORDER BY c.embedding <=> %(vec)s::vector
-    LIMIT 50
+    LIMIT 100
 ),
 text_results AS (
     SELECT c.chunk_id,
@@ -90,7 +90,7 @@ text_results AS (
       AND (%(year_to)s::int IS NULL OR d.year <= %(year_to)s)
       AND (%(language)s::text IS NULL OR d.language = %(language)s)
       AND (%(publication)s::text IS NULL OR d.publication = %(publication)s)
-    LIMIT 50
+    LIMIT 100
 ),
 fused AS (
     SELECT v.chunk_id, v.doc_id, v.text, v.start_page, v.end_page, v.section_heading,
@@ -140,6 +140,31 @@ def _build_tsquery(query: str, cur: psycopg.Cursor) -> str:
     return or_query
 
 
+def _apply_doc_cap(chunks: list[RetrievedChunk], max_per_doc: int, target_count: int) -> list[RetrievedChunk]:
+    """Cap chunks per document to ensure source diversity. Chunks must be pre-sorted by score (desc)."""
+    if max_per_doc <= 0:
+        return chunks[:target_count]
+
+    doc_counts: dict[str, int] = {}
+    result: list[RetrievedChunk] = []
+    for chunk in chunks:
+        count = doc_counts.get(chunk.doc_id, 0)
+        if count >= max_per_doc:
+            continue
+        doc_counts[chunk.doc_id] = count + 1
+        result.append(chunk)
+        if len(result) >= target_count:
+            break
+
+    doc_dist = sorted(doc_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+    log.info(
+        "Diversity cap applied: %d candidates from %d docs (max %d/doc), top-5: %s",
+        len(result), len(doc_counts), max_per_doc,
+        ", ".join(f"{did}={n}" for did, n in doc_dist),
+    )
+    return result
+
+
 def retrieve(
     query: str,
     config: RAGConfig,
@@ -153,6 +178,8 @@ def retrieve(
     """Embed the query and retrieve the most similar chunks via hybrid search (vector + full-text RRF)."""
     top_k = top_k or config.retrieval_top_k
     fetch_k = config.rerank_candidates if config.rerank_enabled else top_k
+    # When diversity cap is active, fetch extra from SQL so the cap has enough to work with
+    sql_limit = fetch_k * 3 if config.diversity_max_per_doc > 0 else fetch_k
     vec = embed_query(query, config)
     vec_str = "[" + ",".join(str(x) for x in vec) + "]"
 
@@ -161,7 +188,7 @@ def retrieve(
         with conn.cursor() as cur:
             tsquery = _build_tsquery(query, cur)
             cur.execute(RETRIEVE_SQL, {
-                "vec": vec_str, "tsquery": tsquery, "top_k": fetch_k, "doc_type": document_type,
+                "vec": vec_str, "tsquery": tsquery, "top_k": sql_limit, "doc_type": document_type,
                 "year_from": year_from, "year_to": year_to, "language": language, "publication": publication,
             })
             rows = cur.fetchall()
@@ -187,6 +214,9 @@ def retrieve(
             abstract=row[15],
             description=row[16],
         ))
+
+    if config.diversity_max_per_doc > 0 and chunks:
+        chunks = _apply_doc_cap(chunks, config.diversity_max_per_doc, fetch_k)
 
     if config.rerank_enabled and chunks:
         from .reranker import rerank
