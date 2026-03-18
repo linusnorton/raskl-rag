@@ -218,6 +218,17 @@ async def _stream_response(
 # --- Image serving endpoint ---
 
 
+def _resolve_latest_s3_prefix(s3_client, bucket: str, doc_id: str) -> str:
+    """Find the latest versioned prefix (e.g. processed/{doc_id}/v3) in S3."""
+    resp = s3_client.list_objects_v2(Bucket=bucket, Prefix=f"processed/{doc_id}/v", Delimiter="/")
+    prefixes = [p["Prefix"].rstrip("/") for p in resp.get("CommonPrefixes", [])]
+    if not prefixes:
+        return f"processed/{doc_id}/v1"
+    # Sort by version number descending
+    prefixes.sort(key=lambda p: int(p.rsplit("/v", 1)[-1]), reverse=True)
+    return prefixes[0]
+
+
 @app.get("/v1/images/{figure_id}")
 async def get_image(
     figure_id: str,
@@ -254,8 +265,11 @@ async def get_image(
     if on_lambda and config.s3_bucket:
         import boto3
 
-        s3_key = f"{s3_prefix}/{rel_path}" if s3_prefix else f"processed/{doc_id}/latest/{rel_path}"
         s3_client = boto3.client("s3", region_name=config.bedrock_region)
+        if not s3_prefix:
+            # Resolve latest version by listing S3 version prefixes
+            s3_prefix = _resolve_latest_s3_prefix(s3_client, config.s3_bucket, doc_id)
+        s3_key = f"{s3_prefix}/{rel_path}"
         presigned_url = s3_client.generate_presigned_url(
             "get_object",
             Params={"Bucket": config.s3_bucket, "Key": s3_key},

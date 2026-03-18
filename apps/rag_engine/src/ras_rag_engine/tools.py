@@ -201,7 +201,7 @@ def format_chunks_for_context(
                     # Skip figures with empty or generic captions
                     if not caption or re.match(r"^Figure on p\.\d+$", caption):
                         continue
-                    chunk_text += f"\n\nAvailable image: ![{caption}]({fig.image_url})"
+                    chunk_text += f"\n\n![{caption}]({fig.image_url})\n*{caption}*"
 
         parts.append(chunk_text)
     return "\n\n".join(parts)

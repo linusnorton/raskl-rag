@@ -64,7 +64,7 @@ Guidelines:
   with the ISO code: en (English), ms (Malay), zh (Chinese), ar (Arabic/Jawi).
 - When the user asks for images from a specific period, use `year_from`/`year_to` on `find_images` too.
 - Do not invent facts. Only state what the sources say.
-- When context contains "Available image" lines, include only relevant ones using the exact markdown syntax. Briefly introduce each image explaining what it shows. Skip images with generic captions like "Figure on p.X".\
+- When context contains images (![caption](url) with italic caption below), include relevant ones in your response preserving both the image markdown and the italic caption line. Skip images with generic captions like "Figure on p.X".\
 """
 
 MAX_TOOL_ROUNDS = 5
