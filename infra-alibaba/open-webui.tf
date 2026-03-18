@@ -51,6 +51,12 @@ resource "alicloud_security_group_rule" "egress" {
   cidr_ip           = "0.0.0.0/0"
 }
 
+# SSH key pair for access
+resource "alicloud_ecs_key_pair" "deploy" {
+  key_pair_name = "${local.prefix}-deploy"
+  public_key    = file("~/.ssh/id_rsa.pub")
+}
+
 # ECS instance
 resource "alicloud_instance" "webui" {
   instance_name        = "${local.prefix}-open-webui"
@@ -62,8 +68,8 @@ resource "alicloud_instance" "webui" {
   system_disk_category = "cloud_efficiency"
   system_disk_size     = 40
 
-  spot_strategy     = "SpotAsPriceGo"  # Cheapest spot pricing
-  spot_price_limit  = 0.05  # Max $0.05/hr
+  spot_strategy     = "NoSpot"
+  key_name          = alicloud_ecs_key_pair.deploy.key_pair_name
 
   user_data = base64encode(<<-USERDATA
     #!/bin/bash
@@ -92,7 +98,7 @@ resource "alicloud_instance" "webui" {
       -e WEBUI_NAME="SwetBot" \
       ghcr.io/open-webui/open-webui:main
 
-    # Nginx reverse proxy config
+    # Nginx reverse proxy: Open WebUI + Admin
     cat > /etc/nginx/sites-available/swetbot2 << 'NGINX'
     server {
         listen 80;
@@ -110,15 +116,34 @@ resource "alicloud_instance" "webui" {
             proxy_read_timeout 300s;
         }
     }
+
+    server {
+        listen 80;
+        server_name admin.swetbot2.ljn.io;
+
+        location / {
+            proxy_pass https://raskl-admin-nnternabbc.ap-southeast-1.fcapp.run;
+            proxy_set_header Host raskl-admin-nnternabbc.ap-southeast-1.fcapp.run;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_ssl_server_name on;
+            proxy_read_timeout 120s;
+        }
+    }
     NGINX
 
     ln -sf /etc/nginx/sites-available/swetbot2 /etc/nginx/sites-enabled/
     rm -f /etc/nginx/sites-enabled/default
     nginx -t && systemctl reload nginx
 
-    # Wait for Open WebUI to be ready, then get SSL cert
-    sleep 30
-    certbot --nginx -d swetbot2.ljn.io --non-interactive --agree-tos -m linus@ljn.io --redirect
+    # Wait for Open WebUI + DNS propagation, then get SSL certs
+    sleep 90
+    for i in 1 2 3; do
+      certbot --nginx -d swetbot2.ljn.io -d admin.swetbot2.ljn.io --non-interactive --agree-tos -m linus@ljn.io --redirect && break
+      echo "Certbot attempt $i failed, retrying in 60s..."
+      sleep 60
+    done
 
     # Auto-renew cron
     echo "0 3 * * * certbot renew --quiet" | crontab -
