@@ -57,6 +57,12 @@ Guidelines:
 - When the user asks for a specific type of document (e.g. "find primary sources on...",
   "are there any obituaries about..."), use the `document_type` parameter in `search_documents`
   to filter results.
+- When the user mentions a time period, use `year_from` and `year_to` to filter by publication year.
+  Common mappings: "1870s" → year_from=1870, year_to=1879; "19th century" → 1800-1899;
+  "before 1900" → year_to=1899; "after 1950" → year_from=1950.
+- When the user specifies a language (e.g. "Malay-language sources"), use the `language` parameter
+  with the ISO code: en (English), ms (Malay), zh (Chinese), ar (Arabic/Jawi).
+- When the user asks for images from a specific period, use `year_from`/`year_to` on `find_images` too.
 - Do not invent facts. Only state what the sources say.
 - When context contains "Available image" lines, include only relevant ones using the exact markdown syntax. Briefly introduce each image explaining what it shows. Skip images with generic captions like "Figure on p.X".\
 """

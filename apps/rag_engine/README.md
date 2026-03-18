@@ -317,6 +317,32 @@ which the LLM understands well.
 secondary sources (journal articles). Tagging each passage lets the LLM weigh evidence
 appropriately — preferring primary sources for factual claims and journal articles for analysis.
 
+### D15 — Structured metadata filtering
+
+**What we chose:** Both `search_documents` and `find_images` tools accept optional metadata
+filters that map to SQL WHERE clauses on the `documents` table:
+
+| Parameter | Type | Applies to | Description |
+|-----------|------|-----------|-------------|
+| `document_type` | string | search, images | Filter by document type (existing) |
+| `year_from` | integer | search, images | Publication year lower bound (inclusive) |
+| `year_to` | integer | search, images | Publication year upper bound (inclusive) |
+| `language` | string | search | ISO language code: en, ms, zh, ar |
+| `publication` | string | search | Exact publication name (e.g. JMBRAS, JSBRAS) |
+
+All filters use the `IS NULL OR` pattern — a NULL parameter means "no filter", so unfiltered
+queries are unaffected. Documents with NULL year are excluded when a year range is specified.
+
+The system prompt guides the LLM to map natural language to these filters (e.g. "1870s" →
+year_from=1870, year_to=1879; "Malay-language" → language=ms).
+
+**Why:** Questions like "find articles from the 1870s" or "Malay-language sources about
+Swettenham" previously relied on keyword matching. Structured SQL filters give precise results
+without depending on year/language appearing in the text.
+
+**No DB changes needed:** The `year`, `language`, and `publication` columns already exist in the
+`documents` table, populated by the docproc pipeline.
+
 ## Configuration
 
 Key environment variables (prefix `CHAT_`):

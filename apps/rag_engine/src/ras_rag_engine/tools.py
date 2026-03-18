@@ -37,6 +37,22 @@ _SEARCH_TOOL = {
                         "primary_source, mbras_monograph, mbras_reprint, index, illustration."
                     ),
                 },
+                "year_from": {
+                    "type": "integer",
+                    "description": "Optional lower bound (inclusive) for publication year.",
+                },
+                "year_to": {
+                    "type": "integer",
+                    "description": "Optional upper bound (inclusive) for publication year.",
+                },
+                "language": {
+                    "type": "string",
+                    "description": "Optional ISO language code filter: en, ms, zh, ar.",
+                },
+                "publication": {
+                    "type": "string",
+                    "description": "Optional exact-match filter for publication name (e.g. JMBRAS, JSBRAS).",
+                },
             },
             "required": ["query"],
         },
@@ -57,7 +73,19 @@ _FIND_IMAGES_TOOL = {
                 "query": {
                     "type": "string",
                     "description": "A search query describing the image or figure you are looking for.",
-                }
+                },
+                "document_type": {
+                    "type": "string",
+                    "description": "Optional filter to restrict results to a specific document type.",
+                },
+                "year_from": {
+                    "type": "integer",
+                    "description": "Optional lower bound (inclusive) for publication year.",
+                },
+                "year_to": {
+                    "type": "integer",
+                    "description": "Optional upper bound (inclusive) for publication year.",
+                },
             },
             "required": ["query"],
         },
@@ -183,7 +211,14 @@ def _execute_search_documents(args: dict, config: RAGConfig, start_index: int = 
     """Execute a document search and return formatted results + raw chunks."""
     query = args["query"]
     document_type = args.get("document_type")
-    chunks = retrieve(query, config, document_type=document_type)
+    year_from = args.get("year_from")
+    year_to = args.get("year_to")
+    language = args.get("language")
+    publication = args.get("publication")
+    chunks = retrieve(
+        query, config, document_type=document_type,
+        year_from=year_from, year_to=year_to, language=language, publication=publication,
+    )
     text = format_chunks_for_context(chunks, start_index=start_index)
     return text, chunks
 
@@ -191,7 +226,13 @@ def _execute_search_documents(args: dict, config: RAGConfig, start_index: int = 
 def _execute_find_images(args: dict, config: RAGConfig) -> tuple[str, list[RetrievedChunk]]:
     """Execute an image search and return formatted results with markdown image syntax."""
     query = args["query"]
-    figures = retrieve_figures(query, config, top_k=5)
+    document_type = args.get("document_type")
+    year_from = args.get("year_from")
+    year_to = args.get("year_to")
+    figures = retrieve_figures(
+        query, config, top_k=5,
+        document_type=document_type, year_from=year_from, year_to=year_to,
+    )
 
     if not figures:
         return "No images found matching that query.", []

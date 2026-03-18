@@ -66,6 +66,10 @@ WITH vector_results AS (
     FROM chunks c
     JOIN documents d_v ON c.doc_id = d_v.doc_id
     WHERE (%(doc_type)s IS NULL OR d_v.document_type = %(doc_type)s)
+      AND (%(year_from)s IS NULL OR d_v.year >= %(year_from)s)
+      AND (%(year_to)s IS NULL OR d_v.year <= %(year_to)s)
+      AND (%(language)s IS NULL OR d_v.language = %(language)s)
+      AND (%(publication)s IS NULL OR d_v.publication = %(publication)s)
     ORDER BY c.embedding <=> %(vec)s::vector
     LIMIT 50
 ),
@@ -82,6 +86,10 @@ text_results AS (
     JOIN documents d ON c.doc_id = d.doc_id
     WHERE to_tsvector('english', c.text) @@ %(tsquery)s::tsquery
       AND (%(doc_type)s IS NULL OR d.document_type = %(doc_type)s)
+      AND (%(year_from)s IS NULL OR d.year >= %(year_from)s)
+      AND (%(year_to)s IS NULL OR d.year <= %(year_to)s)
+      AND (%(language)s IS NULL OR d.language = %(language)s)
+      AND (%(publication)s IS NULL OR d.publication = %(publication)s)
     LIMIT 50
 ),
 fused AS (
@@ -133,7 +141,14 @@ def _build_tsquery(query: str, cur: psycopg.Cursor) -> str:
 
 
 def retrieve(
-    query: str, config: RAGConfig, top_k: int | None = None, document_type: str | None = None
+    query: str,
+    config: RAGConfig,
+    top_k: int | None = None,
+    document_type: str | None = None,
+    year_from: int | None = None,
+    year_to: int | None = None,
+    language: str | None = None,
+    publication: str | None = None,
 ) -> list[RetrievedChunk]:
     """Embed the query and retrieve the most similar chunks via hybrid search (vector + full-text RRF)."""
     top_k = top_k or config.retrieval_top_k
@@ -145,7 +160,10 @@ def retrieve(
         register_vector(conn)
         with conn.cursor() as cur:
             tsquery = _build_tsquery(query, cur)
-            cur.execute(RETRIEVE_SQL, {"vec": vec_str, "tsquery": tsquery, "top_k": fetch_k, "doc_type": document_type})
+            cur.execute(RETRIEVE_SQL, {
+                "vec": vec_str, "tsquery": tsquery, "top_k": fetch_k, "doc_type": document_type,
+                "year_from": year_from, "year_to": year_to, "language": language, "publication": publication,
+            })
             rows = cur.fetchall()
 
     chunks = []
@@ -239,18 +257,28 @@ def retrieve_contextual_figures(chunks: list[RetrievedChunk], config: RAGConfig)
 
 _FIGURE_SEARCH_SQL = """\
 WITH vector_results AS (
-    SELECT figure_id, doc_id, page_num, caption, asset_path, thumb_path,
-           ROW_NUMBER() OVER (ORDER BY embedding <=> %(vec)s::vector) AS vrank
-    FROM figures
-    WHERE embedding IS NOT NULL
-    ORDER BY embedding <=> %(vec)s::vector
+    SELECT f.figure_id, f.doc_id, f.page_num, f.caption, f.asset_path, f.thumb_path,
+           ROW_NUMBER() OVER (ORDER BY f.embedding <=> %(vec)s::vector) AS vrank
+    FROM figures f
+    JOIN documents d_v ON f.doc_id = d_v.doc_id
+    WHERE f.embedding IS NOT NULL
+      AND (%(doc_type)s IS NULL OR d_v.document_type = %(doc_type)s)
+      AND (%(year_from)s IS NULL OR d_v.year >= %(year_from)s)
+      AND (%(year_to)s IS NULL OR d_v.year <= %(year_to)s)
+    ORDER BY f.embedding <=> %(vec)s::vector
     LIMIT 30
 ),
 text_results AS (
-    SELECT figure_id,
-           ROW_NUMBER() OVER (ORDER BY ts_rank(to_tsvector('english', caption), plainto_tsquery('english', %(query)s)) DESC) AS trank
-    FROM figures
-    WHERE to_tsvector('english', caption) @@ plainto_tsquery('english', %(query)s)
+    SELECT f.figure_id,
+           ROW_NUMBER() OVER (ORDER BY ts_rank(
+               to_tsvector('english', f.caption),
+               plainto_tsquery('english', %(query)s)) DESC) AS trank
+    FROM figures f
+    JOIN documents d_t ON f.doc_id = d_t.doc_id
+    WHERE to_tsvector('english', f.caption) @@ plainto_tsquery('english', %(query)s)
+      AND (%(doc_type)s IS NULL OR d_t.document_type = %(doc_type)s)
+      AND (%(year_from)s IS NULL OR d_t.year >= %(year_from)s)
+      AND (%(year_to)s IS NULL OR d_t.year <= %(year_to)s)
     LIMIT 30
 ),
 fused AS (
@@ -274,7 +302,14 @@ LIMIT %(top_k)s
 """
 
 
-def retrieve_figures(query: str, config: RAGConfig, top_k: int = 5) -> list[RetrievedFigure]:
+def retrieve_figures(
+    query: str,
+    config: RAGConfig,
+    top_k: int = 5,
+    document_type: str | None = None,
+    year_from: int | None = None,
+    year_to: int | None = None,
+) -> list[RetrievedFigure]:
     """Search for figures using hybrid search (vector + FTS on captions)."""
     vec = embed_query(query, config)
     vec_str = "[" + ",".join(str(x) for x in vec) + "]"
@@ -283,7 +318,10 @@ def retrieve_figures(query: str, config: RAGConfig, top_k: int = 5) -> list[Retr
     with psycopg.connect(config.dsn) as conn:
         register_vector(conn)
         with conn.cursor() as cur:
-            cur.execute(_FIGURE_SEARCH_SQL, {"vec": vec_str, "query": query, "top_k": top_k})
+            cur.execute(_FIGURE_SEARCH_SQL, {
+                "vec": vec_str, "query": query, "top_k": top_k,
+                "doc_type": document_type, "year_from": year_from, "year_to": year_to,
+            })
             rows = cur.fetchall()
 
     return [
