@@ -43,23 +43,6 @@ calibrate from response `usage.inputTokens` / `usage.outputTokens`.
 
 How could we detect duplicate documents in different PDFs.
 
-## Document type updates
-
-journal_article
-front_matter (often only contains the contents, but sometimes other interesting content is included such as a list of members, staff, patrons, etc.)
-obituary
-editorial ("foreword" and "preface" also fit here)
-annual_report
-agm_minutes
-biographical_notes (short biographical notes on the journal contributors)
-secondary_source (histories, biographies, etc.)
-primary_source (first-hand accounts related to MBRAS studies)
-mbras_monograph (book-sized articles, published separately as books by MBRAS)
-mbras_reprint (older, out of print books printed by MBRAS. Can be primary or secondary sources)
-index (MBRAS occasionally publishes an index to its articles. These sometimes include useful glossaries and other interesting bits)
-
-Check that the agent can handle queries like "Find me primary sources on ..."
-
 ## Filtering
 
 Find out what mechanisms the agent has to filter information (should this be the embedding search or the full text search?). Can we ask it to find articles between x and y date or discussing particular locations?

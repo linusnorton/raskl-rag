@@ -61,10 +61,12 @@ WHERE to_tsvector('english', c.text) @@ plainto_tsquery('english', %(query)s)
 
 RETRIEVE_SQL = """\
 WITH vector_results AS (
-    SELECT chunk_id, doc_id, text, start_page, end_page, section_heading,
-           ROW_NUMBER() OVER (ORDER BY embedding <=> %(vec)s::vector) AS vrank
-    FROM chunks
-    ORDER BY embedding <=> %(vec)s::vector
+    SELECT c.chunk_id, c.doc_id, c.text, c.start_page, c.end_page, c.section_heading,
+           ROW_NUMBER() OVER (ORDER BY c.embedding <=> %(vec)s::vector) AS vrank
+    FROM chunks c
+    JOIN documents d_v ON c.doc_id = d_v.doc_id
+    WHERE (%(doc_type)s IS NULL OR d_v.document_type = %(doc_type)s)
+    ORDER BY c.embedding <=> %(vec)s::vector
     LIMIT 50
 ),
 text_results AS (
@@ -79,6 +81,7 @@ text_results AS (
     FROM chunks c
     JOIN documents d ON c.doc_id = d.doc_id
     WHERE to_tsvector('english', c.text) @@ %(tsquery)s::tsquery
+      AND (%(doc_type)s IS NULL OR d.document_type = %(doc_type)s)
     LIMIT 50
 ),
 fused AS (
@@ -129,7 +132,9 @@ def _build_tsquery(query: str, cur: psycopg.Cursor) -> str:
     return or_query
 
 
-def retrieve(query: str, config: RAGConfig, top_k: int | None = None) -> list[RetrievedChunk]:
+def retrieve(
+    query: str, config: RAGConfig, top_k: int | None = None, document_type: str | None = None
+) -> list[RetrievedChunk]:
     """Embed the query and retrieve the most similar chunks via hybrid search (vector + full-text RRF)."""
     top_k = top_k or config.retrieval_top_k
     fetch_k = config.rerank_candidates if config.rerank_enabled else top_k
@@ -140,7 +145,7 @@ def retrieve(query: str, config: RAGConfig, top_k: int | None = None) -> list[Re
         register_vector(conn)
         with conn.cursor() as cur:
             tsquery = _build_tsquery(query, cur)
-            cur.execute(RETRIEVE_SQL, {"vec": vec_str, "tsquery": tsquery, "top_k": fetch_k})
+            cur.execute(RETRIEVE_SQL, {"vec": vec_str, "tsquery": tsquery, "top_k": fetch_k, "doc_type": document_type})
             rows = cur.fetchall()
 
     chunks = []

@@ -27,7 +27,16 @@ _SEARCH_TOOL = {
                 "query": {
                     "type": "string",
                     "description": "A specific search query describing what information you need from the documents.",
-                }
+                },
+                "document_type": {
+                    "type": "string",
+                    "description": (
+                        "Optional filter to restrict results to a specific document type. "
+                        "Valid values: journal_article, front_matter, obituary, editors_note, "
+                        "annual_report, agm_minutes, biographical_notes, secondary_source, "
+                        "primary_source, mbras_monograph, mbras_reprint, index, illustration."
+                    ),
+                },
             },
             "required": ["query"],
         },
@@ -98,6 +107,23 @@ def _parse_filename_metadata(filename: str) -> tuple[str, str]:
     return "", ""
 
 
+_TYPE_LABELS = {
+    "journal_article": " [Journal Article]",
+    "primary_source": " [Primary Source]",
+    "secondary_source": " [Secondary Source]",
+    "front_matter": " [Front Matter]",
+    "obituary": " [Obituary]",
+    "editors_note": " [Editor's Note]",
+    "illustration": " [Illustration]",
+    "annual_report": " [Annual Report]",
+    "agm_minutes": " [AGM Minutes]",
+    "biographical_notes": " [Biographical Notes]",
+    "mbras_monograph": " [MBRAS Monograph]",
+    "mbras_reprint": " [MBRAS Reprint]",
+    "index": " [Index]",
+}
+
+
 def format_chunks_for_context(
     chunks: list[RetrievedChunk],
     start_index: int = 1,
@@ -120,11 +146,7 @@ def format_chunks_for_context(
         pages = f"p.{display_start}" if display_start == display_end else f"pp.{display_start}-{display_end}"
         heading = f" — {c.section_heading}" if c.section_heading else ""
         # Document type label
-        type_label = ""
-        if c.document_type == "primary_source":
-            type_label = " [Primary Source]"
-        elif c.document_type == "journal_article":
-            type_label = " [Journal Article]"
+        type_label = _TYPE_LABELS.get(c.document_type, "")
         # Use DB metadata, falling back to parsing the source filename
         fn_author, fn_year = _parse_filename_metadata(c.source_filename)
         author = c.author or fn_author
@@ -160,7 +182,8 @@ def format_chunks_for_context(
 def _execute_search_documents(args: dict, config: RAGConfig, start_index: int = 1) -> tuple[str, list[RetrievedChunk]]:
     """Execute a document search and return formatted results + raw chunks."""
     query = args["query"]
-    chunks = retrieve(query, config)
+    document_type = args.get("document_type")
+    chunks = retrieve(query, config, document_type=document_type)
     text = format_chunks_for_context(chunks, start_index=start_index)
     return text, chunks
 

@@ -10,18 +10,48 @@ from ras_docproc.schema import DocumentRecord, TextBlockRecord
 
 logger = logging.getLogger(__name__)
 
+VALID_DOCUMENT_TYPES = {
+    "journal_article",
+    "front_matter",
+    "obituary",
+    "editors_note",
+    "annual_report",
+    "agm_minutes",
+    "biographical_notes",
+    "secondary_source",
+    "primary_source",
+    "mbras_monograph",
+    "mbras_reprint",
+    "index",
+    "illustration",
+}
+
 _CLASSIFY_PROMPT = """\
-You are a document classifier for a historical archive. Given the metadata and opening text of a document, classify it into one of these types:
+You are a document classifier for a historical archive (primarily JMBRAS — Journal of the Malaysian Branch of the Royal Asiatic Society). Given the metadata and opening text of a document, classify it into exactly one of these types:
 
-- **primary_source**: A document created during the historical period it describes — diaries, journals, letters, government records, contemporary accounts, translations of historical texts.
-- **journal_article**: A peer-reviewed academic paper published in a scholarly journal, with modern scholarly apparatus (abstract, citations, bibliography).
+- **journal_article**: A peer-reviewed academic paper with formal scholarly apparatus — abstract, numbered citations, bibliography/references section, academic author attribution. Published in a scholarly journal.
+- **secondary_source**: A longer historical work or essay that analyses past events but lacks the formal apparatus of a journal article (no abstract, no bibliography section). Includes historical surveys, retrospective essays, and book chapters.
+- **primary_source**: A document created during the historical period it describes — diaries, journals, letters, government records, dispatches, contemporary accounts, translations of historical texts. Classify based on content, not publication channel (e.g. a diary published via JSTOR is still a primary source).
+- **mbras_monograph**: An original book-length work published by MBRAS/JMBRAS as a standalone monograph or monograph series entry (e.g. "MBRAS Monograph No. 12"). Typically has its own ISBN or series number.
+- **mbras_reprint**: An older out-of-print book or text reprinted/republished by MBRAS. Often has a modern preface or introduction followed by a much older original text.
+- **front_matter**: Non-article content at the start of a journal issue — table of contents, member lists, patron lists, council lists, office-bearer lists, institutional information.
+- **obituary**: A memorial notice or tribute for a deceased person, typically naming the subject and summarising their life and contributions.
+- **editors_note**: An editor's foreword, preface, introduction, or editorial note for a journal issue or volume. Written by the editor rather than a contributing author. Filenames often contain "EditorsNote".
+- **illustration**: A standalone page or PDF of illustrations, photographs, plates, or maps extracted separately (e.g. by JSTOR). Filenames often match "Illustration-{year}.pdf". Contains primarily images with minimal or no body text.
+- **annual_report**: A yearly report of the society's activities, finances, membership, publications, and events.
+- **agm_minutes**: Minutes or proceedings of the Annual General Meeting of the society, including motions, votes, and resolutions.
+- **biographical_notes**: Short biographical sketches or notes about contributors, members, or historical figures. Shorter and less formal than an obituary.
+- **index**: A subject index, author index, or cumulative index for one or more journal volumes.
 
-Signals for journal_article: presence of an abstract, numbered footnotes citing other works, a bibliography/references section, academic author attribution with year, JSTOR/Project MUSE metadata, analytical language.
-
-Signals for primary_source: diary entries with dates, first-person accounts, correspondence, government dispatches, translations of historical documents, no modern scholarly apparatus. Note: a diary or journal published by a scholarly society (e.g. via JSTOR) is still a primary source, not a journal article — classify based on the content, not the publication channel.
+Key disambiguation:
+- journal_article vs secondary_source: journal articles have formal academic apparatus (abstract, citations, bibliography); secondary sources are analytical but lack this formal structure.
+- mbras_monograph vs mbras_reprint: monographs are original works; reprints are older texts republished by MBRAS.
+- editors_note includes forewords and prefaces written by editors.
+- front_matter covers administrative/institutional content, not articles.
+- illustration is for standalone image pages/PDFs (often JSTOR extracts), not figures embedded within articles.
 
 Respond with ONLY a JSON object (no markdown fencing):
-{"document_type": "journal_article" or "primary_source", "confidence": 0.0-1.0, "reasoning": "brief explanation"}"""
+{"document_type": "<one of the types above>", "confidence": 0.0-1.0, "reasoning": "brief explanation"}"""
 
 
 def classify_document_type(
@@ -117,7 +147,7 @@ def classify_document_type(
         confidence = result.get("confidence", 0.0)
         reasoning = result.get("reasoning", "")
 
-        if doc_type in ("journal_article", "primary_source"):
+        if doc_type in VALID_DOCUMENT_TYPES:
             document.document_type = doc_type
             logger.info("Document classified as '%s' (confidence=%.2f): %s", doc_type, confidence, reasoning)
         else:

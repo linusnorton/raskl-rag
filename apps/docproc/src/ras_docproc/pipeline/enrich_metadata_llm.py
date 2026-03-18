@@ -7,6 +7,7 @@ import logging
 import re
 
 from ras_docproc.config import PipelineConfig
+from ras_docproc.pipeline.classify_doctype import VALID_DOCUMENT_TYPES
 from ras_docproc.schema import DocumentRecord, MetadataSource, TextBlockRecord
 
 logger = logging.getLogger(__name__)
@@ -34,7 +35,7 @@ Return ONLY a JSON object (no markdown fencing) with these fields:
   "series": "series name if applicable (e.g. 'JMBRAS Monograph No. 12'), else null",
   "description": "2-3 sentence summary of what the document is about",
   "doi": "DOI if found, else null",
-  "document_type": "primary_source or journal_article"
+  "document_type": "journal_article | front_matter | obituary | editors_note | annual_report | agm_minutes | biographical_notes | secondary_source | primary_source | mbras_monograph | mbras_reprint | index | illustration"
 }
 
 Rules:
@@ -182,7 +183,7 @@ def _apply_llm_result(document: DocumentRecord, result: dict) -> None:
 
     # Document type from LLM (if not already set by classify_doctype stage)
     doc_type = result.get("document_type", "")
-    if doc_type in ("primary_source", "journal_article") and not document.document_type:
+    if doc_type in VALID_DOCUMENT_TYPES and not document.document_type:
         document.document_type = doc_type
         document.metadata_sources.append(
             MetadataSource(field="document_type", source="llm_extraction", confidence=0.7, raw_value=doc_type)
