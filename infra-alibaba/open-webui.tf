@@ -22,7 +22,15 @@ resource "alicloud_security_group" "webui" {
 resource "alicloud_security_group_rule" "http" {
   type              = "ingress"
   ip_protocol       = "tcp"
-  port_range        = "8080/8080"
+  port_range        = "80/80"
+  security_group_id = alicloud_security_group.webui.id
+  cidr_ip           = "0.0.0.0/0"
+}
+
+resource "alicloud_security_group_rule" "https" {
+  type              = "ingress"
+  ip_protocol       = "tcp"
+  port_range        = "443/443"
   security_group_id = alicloud_security_group.webui.id
   cidr_ip           = "0.0.0.0/0"
 }
@@ -60,16 +68,18 @@ resource "alicloud_instance" "webui" {
   user_data = base64encode(<<-USERDATA
     #!/bin/bash
     set -e
+    export DEBIAN_FRONTEND=noninteractive
+
     apt-get update -qq
-    apt-get install -y -qq docker.io
-    systemctl enable docker
+    apt-get install -y -qq docker.io nginx certbot python3-certbot-nginx
+    systemctl enable docker nginx
     systemctl start docker
 
-    # Run Open WebUI
+    # Run Open WebUI on localhost:8080
     docker run -d \
       --name open-webui \
       --restart unless-stopped \
-      -p 8080:8080 \
+      -p 127.0.0.1:8080:8080 \
       -v open-webui-data:/app/backend/data \
       -e OPENAI_API_BASE_URLS="https://raskl-rag-api-rsxcnkcipr.ap-southeast-1.fcapp.run/v1" \
       -e OPENAI_API_KEYS="${var.rag_api_key}" \
@@ -81,6 +91,37 @@ resource "alicloud_instance" "webui" {
       -e DATABASE_URL="${local.neon_open_webui_dsn}" \
       -e WEBUI_NAME="SwetBot" \
       ghcr.io/open-webui/open-webui:main
+
+    # Nginx reverse proxy config
+    cat > /etc/nginx/sites-available/swetbot2 << 'NGINX'
+    server {
+        listen 80;
+        server_name swetbot2.ljn.io;
+
+        location / {
+            proxy_pass http://127.0.0.1:8080;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+            proxy_read_timeout 300s;
+        }
+    }
+    NGINX
+
+    ln -sf /etc/nginx/sites-available/swetbot2 /etc/nginx/sites-enabled/
+    rm -f /etc/nginx/sites-enabled/default
+    nginx -t && systemctl reload nginx
+
+    # Wait for Open WebUI to be ready, then get SSL cert
+    sleep 30
+    certbot --nginx -d swetbot2.ljn.io --non-interactive --agree-tos -m linus@ljn.io --redirect
+
+    # Auto-renew cron
+    echo "0 3 * * * certbot renew --quiet" | crontab -
   USERDATA
   )
 
