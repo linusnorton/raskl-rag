@@ -171,13 +171,18 @@ def format_citations(chunks: list[RetrievedChunk], response_text: str = "", inde
     """Build a deduplicated markdown citation block from retrieved chunks.
 
     Only includes chunks that the LLM actually cited via [N] markers.
-    If no cited indices are found, falls back to showing all chunks.
+    If the response contains text but no [N] markers, returns no sources.
     index_map remaps original chunk indices to consecutive display labels.
     """
     if not chunks:
         return ""
 
     cited = extract_cited_indices(response_text) if response_text else set()
+
+    # If the LLM produced a response but cited nothing, show no sources
+    # (avoids dumping all retrieved chunks for pure-image or no-citation responses)
+    if response_text and not cited:
+        return ""
 
     seen: set[str] = set()
     lines: list[str] = []

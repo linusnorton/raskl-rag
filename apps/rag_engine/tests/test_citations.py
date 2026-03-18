@@ -142,8 +142,8 @@ class TestRenumberResponse:
         chunks = [_chunk("c1", 1)]
         text = "A response with no citations."
         result = renumber_response(text, chunks)
-        # Should still include sources as fallback
-        assert "Sources" in result
+        # Response with text but no [N] markers should show no sources
+        assert "Sources" not in result
 
     def test_multi_citation_pattern(self):
         chunks = [_chunk("c1", 1), _chunk("c2", 2), _chunk("c3", 3)]
