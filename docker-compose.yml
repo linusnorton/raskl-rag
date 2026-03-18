@@ -28,7 +28,7 @@ services:
       # Disable arena model
       ENABLE_EVALUATION_ARENA_MODELS: "false"
       # Branding
-      WEBUI_NAME: "RASKL"
+      WEBUI_NAME: "SwetBot"
     volumes:
       - open-webui-data:/app/backend/data
     extra_hosts:
