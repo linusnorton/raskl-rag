@@ -12,7 +12,9 @@ services:
       - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-light.sql:ro
 
   open-webui:
-    image: ghcr.io/open-webui/open-webui:main
+    build:
+      context: .
+      dockerfile: open-webui.Dockerfile
     ports:
       - "3000:8080"
     environment:
@@ -25,6 +27,8 @@ services:
       WEBUI_AUTH: "false"
       # Disable arena model
       ENABLE_EVALUATION_ARENA_MODELS: "false"
+      # Branding
+      WEBUI_NAME: "RASKL"
     volumes:
       - open-webui-data:/app/backend/data
     extra_hosts:
