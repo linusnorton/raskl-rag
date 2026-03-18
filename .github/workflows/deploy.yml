@@ -55,6 +55,9 @@ jobs:
               - 'infra/**'
             open_webui:
               - 'infra/open-webui.tf'
+              - 'open-webui.Dockerfile'
+              - 'apps/admin/src/ras_admin/static/favicon.ico'
+              - 'apps/admin/src/ras_admin/static/logo.png'
 
   test:
     needs: changes
@@ -196,11 +199,13 @@ jobs:
           docker build -f apps/admin/Dockerfile -t "$IMAGE" .
           docker push "$IMAGE"
 
-  mirror-open-webui:
+  build-open-webui:
     needs: changes
     if: always() && !failure() && !cancelled()
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -211,7 +216,7 @@ jobs:
         id: ecr-login
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Mirror Open WebUI image to ECR (skip if unchanged)
+      - name: Build and push custom Open WebUI image
         run: |
           ECR_REPO="${{ steps.ecr-login.outputs.registry }}/raskl-open-webui"
 
@@ -219,27 +224,19 @@ jobs:
           aws ecr describe-repositories --repository-names raskl-open-webui 2>/dev/null || \
             aws ecr create-repository --repository-name raskl-open-webui --image-tag-mutability MUTABLE
 
-          # Get upstream GHCR digest (without pulling the image)
-          GHCR_DIGEST=$(docker manifest inspect ghcr.io/open-webui/open-webui:main -v 2>/dev/null | jq -r 'if type == "array" then .[0].Descriptor.digest else .Descriptor.digest end')
+          # Config change forces build regardless of digest
+          FORCE_BUILD="${{ needs.changes.outputs.open_webui }}"
 
-          # Get current ECR digest
-          ECR_DIGEST=$(aws ecr batch-get-image --repository-name raskl-open-webui --image-ids imageTag=latest \
-            --query 'images[0].imageId.imageDigest' --output text 2>/dev/null || echo "none")
-
-          # Config change forces mirror regardless of digest
-          FORCE_MIRROR="${{ needs.changes.outputs.open_webui }}"
-
-          if [ "$GHCR_DIGEST" = "$ECR_DIGEST" ] && [ "$FORCE_MIRROR" != "true" ]; then
-            echo "Open WebUI image unchanged (digest: ${GHCR_DIGEST}), skipping mirror"
+          if [ "$FORCE_BUILD" != "true" ]; then
+            echo "No Open WebUI changes detected, skipping build"
           else
-            echo "Mirroring Open WebUI (GHCR: ${GHCR_DIGEST}, ECR: ${ECR_DIGEST}, force: ${FORCE_MIRROR})"
-            docker pull ghcr.io/open-webui/open-webui:main
-            docker tag ghcr.io/open-webui/open-webui:main "${ECR_REPO}:latest"
+            echo "Building custom Open WebUI image"
+            docker build -f open-webui.Dockerfile -t "${ECR_REPO}:latest" .
             docker push "${ECR_REPO}:latest"
           fi
 
   deploy:
-    needs: [changes, build-api, build-docproc, build-chunker, build-admin, mirror-open-webui]
+    needs: [changes, build-api, build-docproc, build-chunker, build-admin, build-open-webui]
     if: always() && !failure() && !cancelled()
     runs-on: ubuntu-latest
     environment:
