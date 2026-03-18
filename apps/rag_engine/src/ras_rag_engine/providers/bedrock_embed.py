@@ -60,9 +60,14 @@ class BedrockEmbedProvider(EmbedProvider):
         return all_embeddings
 
     def _embed_cohere(self, client, texts: list[str]) -> list[list[float]]:
-        """Cohere Embed v4/v3 — up to 96 texts per batch."""
+        """Cohere Embed v4/v3 — up to 96 texts per batch, with throttle retry."""
+        import time
+
+        from botocore.exceptions import ClientError
+
         all_embeddings: list[list[float]] = []
         batch_size = 96
+        max_retries = 5
 
         for i in range(0, len(texts), batch_size):
             batch = texts[i : i + batch_size]
@@ -75,12 +80,23 @@ class BedrockEmbedProvider(EmbedProvider):
             if self.dimensions:
                 body["output_dimension"] = self.dimensions
 
-            resp = client.invoke_model(
-                modelId=self.model_id,
-                body=json.dumps(body),
-                contentType="application/json",
-                accept="application/json",
-            )
+            for attempt in range(max_retries):
+                try:
+                    resp = client.invoke_model(
+                        modelId=self.model_id,
+                        body=json.dumps(body),
+                        contentType="application/json",
+                        accept="application/json",
+                    )
+                    break
+                except ClientError as e:
+                    if e.response["Error"]["Code"] == "ThrottlingException" and attempt < max_retries - 1:
+                        delay = 10 * (2**attempt)
+                        log.warning("Throttled on batch %d, retrying in %ds (attempt %d/%d)", i // batch_size, delay, attempt + 1, max_retries)
+                        time.sleep(delay)
+                    else:
+                        raise
+
             result = json.loads(resp["body"].read())
 
             # v4 with embedding_types returns {"embeddings": {"float": [[...]]}}
