@@ -73,8 +73,9 @@ up for rank-1 results while still rewarding items that rank highly in both syste
 then a reranker scores and re-orders them, returning the final `retrieval_top_k` (default 15).
 
 **Reranking:** The reranker prepends document metadata (author, title) to each chunk's text
-before scoring, giving the model richer context for relevance judgement. The Bedrock reranker
-(Amazon Rerank v1) is used in production.
+before scoring, giving the model richer context for relevance judgement. Cohere Rerank 3.5
+is used in production, chosen for its strong multilingual support (+26.4% on cross-lingual
+search benchmarks) which benefits this corpus's mix of English, Malay, Chinese, and Arabic.
 
 **Why rerank:** Hybrid search produces a good candidate set but RRF scores are noisy — a chunk
 that ranks #1 in vector search and #50 in FTS gets the same RRF score as one that ranks #25 in
@@ -219,8 +220,8 @@ Locally, streaming works normally via SSE.
 | Component | Bedrock Model |
 |-----------|---------------|
 | Chat LLM | Qwen3-235B-A22B via Converse API |
-| Embedding | Amazon Titan Embed Text v2 (1024 dims) |
-| Reranking | Amazon Rerank v1 (via bedrock-agent-runtime) |
+| Embedding | Cohere Embed v4 via EU inference profile (1024 dims) |
+| Reranking | Cohere Rerank 3.5 (via bedrock-agent-runtime) |
 
 The provider abstraction (`LLMProvider`, `EmbedProvider`, `RerankProvider` base classes) is
 retained for testability, but only the Bedrock implementations exist. Earlier versions had local
@@ -361,9 +362,10 @@ Key environment variables (prefix `CHAT_`):
 | `CHAT_WEB_SEARCH_ENABLED` | `true` | Include web_search tool |
 | `CHAT_BEDROCK_REGION` | `eu-west-2` | AWS region for Bedrock |
 | `CHAT_BEDROCK_CHAT_MODEL_ID` | `qwen.qwen3-235b-a22b-2507-v1:0` | Bedrock chat model |
-| `CHAT_BEDROCK_EMBED_MODEL_ID` | `amazon.titan-embed-text-v2:0` | Bedrock embedding model |
+| `CHAT_BEDROCK_EMBED_REGION` | `eu-west-1` | AWS region for embeddings |
+| `CHAT_BEDROCK_EMBED_MODEL_ID` | `eu.cohere.embed-v4:0` | Bedrock embedding model |
 | `CHAT_BEDROCK_RERANK_REGION` | `eu-central-1` | AWS region for reranking |
-| `CHAT_BEDROCK_RERANK_MODEL_ID` | `amazon.rerank-v1:0` | Bedrock rerank model |
+| `CHAT_BEDROCK_RERANK_MODEL_ID` | `cohere.rerank-v3-5:0` | Bedrock rerank model |
 | `CHAT_DATABASE_DSN` | _(empty)_ | Override full connection string (e.g. Neon DSN) |
 | `CHAT_API_PORT` | `8000` | API server port |
 | `CHAT_API_KEY` | _(empty)_ | Bearer token (if set, requires auth) |

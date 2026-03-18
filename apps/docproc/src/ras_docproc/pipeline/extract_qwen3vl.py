@@ -66,6 +66,19 @@ def _render_page_to_image_bytes(pdf_path: str, page_index: int, dpi: int) -> tup
         doc.close()
 
 
+_bedrock_clients: dict[str, object] = {}
+
+
+def _get_bedrock_client(region: str):
+    if region not in _bedrock_clients:
+        import boto3
+        from botocore.config import Config as BotoConfig
+
+        config = BotoConfig(read_timeout=120, retries={"max_attempts": 0})
+        _bedrock_clients[region] = boto3.client("bedrock-runtime", region_name=region, config=config)
+    return _bedrock_clients[region]
+
+
 def _call_bedrock(
     region: str,
     model_id: str,
@@ -74,12 +87,9 @@ def _call_bedrock(
     system_prompt: str,
 ) -> str:
     """Call Bedrock Converse API with image + formatting prompt. Retries on transient errors."""
-    import boto3
-    from botocore.config import Config as BotoConfig
     from botocore.exceptions import ClientError, ReadTimeoutError
 
-    bedrock_config = BotoConfig(read_timeout=120, retries={"max_attempts": 0})
-    client = boto3.client("bedrock-runtime", region_name=region, config=bedrock_config)
+    client = _get_bedrock_client(region)
 
     for attempt in range(MAX_RETRIES):
         try:

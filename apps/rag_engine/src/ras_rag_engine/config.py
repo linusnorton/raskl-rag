@@ -31,9 +31,10 @@ class RAGConfig(BaseSettings):
     # Bedrock
     bedrock_region: str = "eu-west-2"
     bedrock_chat_model_id: str = "qwen.qwen3-235b-a22b-2507-v1:0"
-    bedrock_embed_model_id: str = "amazon.titan-embed-text-v2:0"
+    bedrock_embed_region: str = "eu-west-1"  # Cohere Embed v4 not available in eu-west-2
+    bedrock_embed_model_id: str = "eu.cohere.embed-v4:0"
     bedrock_rerank_region: str = "eu-central-1"  # Cohere Rerank not available in all regions
-    bedrock_rerank_model_id: str = "amazon.rerank-v1:0"
+    bedrock_rerank_model_id: str = "cohere.rerank-v3-5:0"
 
     # Model Studio (Alibaba Cloud)
     model_studio_api_key: str = ""

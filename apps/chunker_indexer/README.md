@@ -7,7 +7,7 @@ search. It does three things:
 
 1. **Chunk** — splits document text into passages sized for retrieval (heading-aware, cross-page
    stitching, footnotes inlined)
-2. **Embed** — converts each passage to a 1024-dimension vector using AWS Bedrock (Titan Embed v2)
+2. **Embed** — converts each passage to a 1024-dimension vector using AWS Bedrock (Cohere Embed v4)
 3. **Index** — stores the text and vectors in PostgreSQL (with the pgvector extension) for hybrid
    search
 
@@ -63,7 +63,7 @@ in academic writing: a new heading signals a new topic.
 **Why 1024 tokens:** The corpus is predominantly narrative historical text (journal articles, not
 short diary entries). 512 tokens split long passages unnecessarily, breaking narrative flow.
 1024 keeps more passages intact while still fitting comfortably in the embedding model's effective
-range (Titan Embed v2 supports up to 8192 tokens). The overlap mechanism (configurable via
+range (Cohere Embed v4 supports up to 128k tokens per text). The overlap mechanism (configurable via
 `CHUNKER_OVERLAP_TOKENS`, default 128) preserves context continuity for the rare cases where
 1024 tokens is still exceeded.
 
@@ -159,8 +159,10 @@ is the simpler, better-performing choice.
 
 ### D6 — Task-specific embedding prefixes
 
-**What we chose:** The task prefix defaults to empty string (`""`), which is correct for Bedrock
-Titan Embed v2. The chunker's `CHUNKER_EMBED_TASK_PREFIX` must match whatever prefix was used
+**What we chose:** The task prefix defaults to empty string (`""`). Cohere Embed v4 uses the
+`input_type` parameter instead of text prefixes to distinguish queries from documents — the
+chunker automatically sets `input_type=search_document` and the RAG engine sets
+`input_type=search_query`. The `CHUNKER_EMBED_TASK_PREFIX` must match whatever prefix was used
 when the collection was indexed — mixing prefixes between indexing and query time will produce
 poor results.
 
@@ -180,12 +182,21 @@ applied), but display code must use `start_page` directly without adding the off
 
 ### D8 — Bedrock embedding
 
-**What we chose:** Embedding uses AWS Bedrock (Amazon Titan Embed Text v2) via boto3. Titan
-embeds one text per API call; the provider uses a `ThreadPoolExecutor` (10 workers) to embed
-chunks concurrently.
+**What we chose:** Embedding uses AWS Bedrock (Cohere Embed v4) via boto3 and the EU
+cross-region inference profile (`eu.cohere.embed-v4:0`). Cohere embeds up to 96 texts per API
+call in batches, and uses asymmetric `input_type` to optimize embeddings for their role:
+`search_document` at index time, `search_query` at query time. This improves retrieval by
+encoding queries and documents differently — a question like "When did Swettenham visit
+Singapore?" is embedded differently from the passage that answers it. Embed v4 supports up to
+128k tokens per text (v3 was limited to 512) and configurable output dimensions (256-1536).
 
-**Important:** The embedding model used by the chunker must match the model used by the chat UI's
-retriever. Both must use the same Bedrock model ID. Mixing models produces silently poor
+**Why v4 and EU inference profile:** Cohere Embed v4 is not available directly in eu-west-2 but
+can be accessed via the EU cross-region profile, which routes to eu-west-1 and other EU regions.
+v4 supports 100+ languages natively (Malay, Chinese, Arabic alongside English) and has a
+dramatically larger context window than v3.
+
+**Important:** The embedding model used by the chunker must match the model used by the RAG
+engine's retriever. Both must use the same Bedrock model ID. Mixing models produces silently poor
 retrieval because vectors from different models are not comparable.
 
 ### D9 — Figure indexing
@@ -323,7 +334,8 @@ Key environment variables (prefix `CHUNKER_`):
 | `CHUNKER_DB_NAME` | `raskl_rag` | PostgreSQL database name |
 | `CHUNKER_DATABASE_DSN` | _(empty)_ | Override full connection string (e.g. Neon DSN) |
 | `CHUNKER_BEDROCK_REGION` | `eu-west-2` | AWS region for Bedrock |
-| `CHUNKER_BEDROCK_EMBED_MODEL_ID` | `amazon.titan-embed-text-v2:0` | Bedrock embedding model ID |
+| `CHUNKER_BEDROCK_EMBED_REGION` | `eu-west-1` | AWS region for embeddings |
+| `CHUNKER_BEDROCK_EMBED_MODEL_ID` | `eu.cohere.embed-v4:0` | Bedrock embedding model ID |
 
 See root `CLAUDE.md` for all CLI commands.
 

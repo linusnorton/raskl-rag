@@ -65,11 +65,11 @@ WITH vector_results AS (
            ROW_NUMBER() OVER (ORDER BY c.embedding <=> %(vec)s::vector) AS vrank
     FROM chunks c
     JOIN documents d_v ON c.doc_id = d_v.doc_id
-    WHERE (%(doc_type)s IS NULL OR d_v.document_type = %(doc_type)s)
-      AND (%(year_from)s IS NULL OR d_v.year >= %(year_from)s)
-      AND (%(year_to)s IS NULL OR d_v.year <= %(year_to)s)
-      AND (%(language)s IS NULL OR d_v.language = %(language)s)
-      AND (%(publication)s IS NULL OR d_v.publication = %(publication)s)
+    WHERE (%(doc_type)s::text IS NULL OR d_v.document_type = %(doc_type)s)
+      AND (%(year_from)s::int IS NULL OR d_v.year >= %(year_from)s)
+      AND (%(year_to)s::int IS NULL OR d_v.year <= %(year_to)s)
+      AND (%(language)s::text IS NULL OR d_v.language = %(language)s)
+      AND (%(publication)s::text IS NULL OR d_v.publication = %(publication)s)
     ORDER BY c.embedding <=> %(vec)s::vector
     LIMIT 50
 ),
@@ -85,11 +85,11 @@ text_results AS (
     FROM chunks c
     JOIN documents d ON c.doc_id = d.doc_id
     WHERE to_tsvector('english', c.text) @@ %(tsquery)s::tsquery
-      AND (%(doc_type)s IS NULL OR d.document_type = %(doc_type)s)
-      AND (%(year_from)s IS NULL OR d.year >= %(year_from)s)
-      AND (%(year_to)s IS NULL OR d.year <= %(year_to)s)
-      AND (%(language)s IS NULL OR d.language = %(language)s)
-      AND (%(publication)s IS NULL OR d.publication = %(publication)s)
+      AND (%(doc_type)s::text IS NULL OR d.document_type = %(doc_type)s)
+      AND (%(year_from)s::int IS NULL OR d.year >= %(year_from)s)
+      AND (%(year_to)s::int IS NULL OR d.year <= %(year_to)s)
+      AND (%(language)s::text IS NULL OR d.language = %(language)s)
+      AND (%(publication)s::text IS NULL OR d.publication = %(publication)s)
     LIMIT 50
 ),
 fused AS (
@@ -262,9 +262,9 @@ WITH vector_results AS (
     FROM figures f
     JOIN documents d_v ON f.doc_id = d_v.doc_id
     WHERE f.embedding IS NOT NULL
-      AND (%(doc_type)s IS NULL OR d_v.document_type = %(doc_type)s)
-      AND (%(year_from)s IS NULL OR d_v.year >= %(year_from)s)
-      AND (%(year_to)s IS NULL OR d_v.year <= %(year_to)s)
+      AND (%(doc_type)s::text IS NULL OR d_v.document_type = %(doc_type)s)
+      AND (%(year_from)s::int IS NULL OR d_v.year >= %(year_from)s)
+      AND (%(year_to)s::int IS NULL OR d_v.year <= %(year_to)s)
     ORDER BY f.embedding <=> %(vec)s::vector
     LIMIT 30
 ),
@@ -276,9 +276,9 @@ text_results AS (
     FROM figures f
     JOIN documents d_t ON f.doc_id = d_t.doc_id
     WHERE to_tsvector('english', f.caption) @@ plainto_tsquery('english', %(query)s)
-      AND (%(doc_type)s IS NULL OR d_t.document_type = %(doc_type)s)
-      AND (%(year_from)s IS NULL OR d_t.year >= %(year_from)s)
-      AND (%(year_to)s IS NULL OR d_t.year <= %(year_to)s)
+      AND (%(doc_type)s::text IS NULL OR d_t.document_type = %(doc_type)s)
+      AND (%(year_from)s::int IS NULL OR d_t.year >= %(year_from)s)
+      AND (%(year_to)s::int IS NULL OR d_t.year <= %(year_to)s)
     LIMIT 30
 ),
 fused AS (

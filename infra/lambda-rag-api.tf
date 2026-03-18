@@ -18,6 +18,7 @@ resource "aws_lambda_function" "rag_api" {
       # Bedrock model configuration
       CHAT_BEDROCK_REGION          = var.aws_region
       CHAT_BEDROCK_CHAT_MODEL_ID   = var.llm_model_id
+      CHAT_BEDROCK_EMBED_REGION    = var.embed_region
       CHAT_BEDROCK_EMBED_MODEL_ID  = var.embed_model_id
       CHAT_BEDROCK_RERANK_REGION   = var.rerank_region
       CHAT_BEDROCK_RERANK_MODEL_ID = var.rerank_model_id

@@ -1,4 +1,4 @@
-"""AWS Bedrock embedding provider — supports Cohere Embed and Amazon Titan Text Embeddings."""
+"""AWS Bedrock embedding provider — supports Cohere Embed v4/v3 and Amazon Titan Text Embeddings."""
 
 from __future__ import annotations
 
@@ -9,16 +9,15 @@ from . import EmbedProvider
 
 log = logging.getLogger(__name__)
 
-_client = None
+_clients: dict[str, object] = {}
 
 
 def _get_client(region: str):
-    global _client
-    if _client is None:
+    if region not in _clients:
         import boto3
 
-        _client = boto3.client("bedrock-runtime", region_name=region)
-    return _client
+        _clients[region] = boto3.client("bedrock-runtime", region_name=region)
+    return _clients[region]
 
 
 def _is_titan(model_id: str) -> bool:
@@ -67,28 +66,35 @@ class BedrockEmbedProvider(EmbedProvider):
         return all_embeddings
 
     def _embed_cohere(self, client, texts: list[str]) -> list[list[float]]:
-        """Cohere Embed — up to 96 texts per batch."""
+        """Cohere Embed v4/v3 — up to 96 texts per batch."""
         all_embeddings: list[list[float]] = []
         batch_size = 96
 
         for i in range(0, len(texts), batch_size):
             batch = texts[i : i + batch_size]
-            body = json.dumps({
+            body: dict = {
                 "texts": batch,
                 "input_type": "search_document",
-                "truncate": "END",
-            })
+                "truncate": "RIGHT",
+                "embedding_types": ["float"],
+            }
+            if self.dimensions:
+                body["output_dimension"] = self.dimensions
 
             resp = client.invoke_model(
                 modelId=self.model_id,
-                body=body,
+                body=json.dumps(body),
                 contentType="application/json",
                 accept="application/json",
             )
             result = json.loads(resp["body"].read())
-            embeddings = result["embeddings"]
 
-            for emb in embeddings:
-                all_embeddings.append(emb[: self.dimensions])
+            # v4 with embedding_types returns {"embeddings": {"float": [[...]]}}
+            # v3 returns {"embeddings": [[...]]}
+            embeddings = result["embeddings"]
+            if isinstance(embeddings, dict):
+                embeddings = embeddings["float"]
+
+            all_embeddings.extend(embeddings)
 
         return all_embeddings

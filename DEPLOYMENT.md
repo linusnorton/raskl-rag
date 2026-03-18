@@ -52,7 +52,7 @@ No VPC required. All Lambdas run outside VPC with direct internet access to Neon
 
 ## Prerequisites
 
-- AWS account with Bedrock model access enabled for: Qwen3-235B-A22B, Amazon Titan Embed Text v2, Amazon Rerank v1
+- AWS account with Bedrock model access enabled for: Qwen3-235B-A22B, Cohere Embed v4, Cohere Rerank 3.5
 - [Neon](https://neon.tech) account + API key (free tier works)
 - Terraform >= 1.5
 - Docker (for building Lambda container images)
@@ -88,8 +88,9 @@ infra/
 | `neon_api_key` | — (sensitive) | Neon API key |
 | `upload_password_hash` | — (sensitive) | SHA-256 hash of upload page password |
 | `llm_model_id` | `qwen.qwen3-235b-a22b-2507-v1:0` | Bedrock chat LLM model |
-| `embed_model_id` | `amazon.titan-embed-text-v2:0` | Bedrock embedding model |
-| `rerank_model_id` | `amazon.rerank-v1:0` | Bedrock rerank model |
+| `embed_model_id` | `eu.cohere.embed-v4:0` | Bedrock embedding model (EU inference profile) |
+| `embed_region` | `eu-west-1` | AWS region for embedding |
+| `rerank_model_id` | `cohere.rerank-v3-5:0` | Bedrock rerank model |
 | `rerank_region` | `eu-central-1` | AWS region for reranking (may differ from main region) |
 | `embed_dimensions` | `1024` | Embedding vector dimensions |
 | `rag_api_image_tag` | `latest` | RAG API Lambda container tag |
@@ -115,7 +116,7 @@ infra/
 - **Timeout**: 900s (15 min)
 - **Trigger**: S3 event on `uploads/*.pdf`
 - **Estimated image**: ~2-3 GB, cold start ~30-60s
-- Pipeline: download PDF → docproc (Qwen3 VL via Bedrock) → versioned JSONL to S3 → diff + SES email → Chunker Lambda triggers on JSONL → chunk + embed (Bedrock Titan Embed v2) → index (Neon)
+- Pipeline: download PDF → docproc (Qwen3 VL via Bedrock) → versioned JSONL to S3 → diff + SES email → Chunker Lambda triggers on JSONL → chunk + embed (Cohere Embed v4) → index (Neon)
 - All PDFs (clean and scanned) use the same Qwen3 VL backend.
 
 ### Upload Lambda (`raskl-upload`)
@@ -138,10 +139,10 @@ infra/
 | Purpose | Model | Notes |
 |---------|-------|-------|
 | Chat LLM | Qwen3-235B-A22B (`qwen.qwen3-235b-a22b-2507-v1:0`) | MoE (235B total, 22B active). Extended thinking enabled (2048 token budget) |
-| Embedding | Amazon Titan Embed Text v2 (`amazon.titan-embed-text-v2:0`) | 1024 dims, one text per call (concurrent via ThreadPoolExecutor) |
-| Reranking | Amazon Rerank v1 (`amazon.rerank-v1:0`) | Via bedrock-agent-runtime Rerank API. Domain hint prepended to queries |
+| Embedding | Cohere Embed v4 (`eu.cohere.embed-v4:0`) | 1024 dims, batch (96/request), asymmetric `input_type`, 128k token context, EU cross-region profile |
+| Reranking | Cohere Rerank 3.5 (`cohere.rerank-v3-5:0`) | Via bedrock-agent-runtime Rerank API. Better multilingual support for mixed-language corpus |
 
-The embedding and reranking providers also support Cohere models (Cohere Embed Multilingual v3 and Cohere Rerank 3.5) — change the model ID in `variables.tf` to switch. Cohere Embed supports batch (96/request) and asymmetric `input_type` (search_query vs search_document).
+The provider code also supports Amazon Titan Embed Text v2 and Cohere Embed v3 — change the model ID in `variables.tf` to switch. Titan embeds one text per call and does not support asymmetric `input_type`.
 
 ## Provider Configuration
 
@@ -151,9 +152,10 @@ The codebase uses a provider abstraction to switch between local and cloud backe
 # RAG API Lambda (env prefix CHAT_ from RAGConfig)
 CHAT_BEDROCK_REGION=eu-west-2
 CHAT_BEDROCK_CHAT_MODEL_ID=qwen.qwen3-235b-a22b-2507-v1:0
-CHAT_BEDROCK_EMBED_MODEL_ID=amazon.titan-embed-text-v2:0
+CHAT_BEDROCK_EMBED_REGION=eu-west-1
+CHAT_BEDROCK_EMBED_MODEL_ID=eu.cohere.embed-v4:0
 CHAT_BEDROCK_RERANK_REGION=eu-central-1
-CHAT_BEDROCK_RERANK_MODEL_ID=amazon.rerank-v1:0
+CHAT_BEDROCK_RERANK_MODEL_ID=cohere.rerank-v3-5:0
 CHAT_LLM_THINKING_BUDGET=2048
 CHAT_RERANK_INSTRUCTION="Given a user question about historical JMBRAS and Swettenham journal documents, judge whether the document passage is relevant"
 CHAT_DATABASE_DSN=postgresql://...@...neon.tech/raskl_rag?sslmode=require
@@ -161,7 +163,8 @@ CHAT_DATABASE_DSN=postgresql://...@...neon.tech/raskl_rag?sslmode=require
 # DocProc Lambda
 CHUNKER_EMBED_PROVIDER=bedrock
 CHUNKER_BEDROCK_REGION=eu-west-2
-CHUNKER_BEDROCK_EMBED_MODEL_ID=amazon.titan-embed-text-v2:0
+CHUNKER_BEDROCK_EMBED_REGION=eu-west-1
+CHUNKER_BEDROCK_EMBED_MODEL_ID=eu.cohere.embed-v4:0
 CHUNKER_DATABASE_DSN=postgresql://...@...neon.tech/raskl_rag?sslmode=require
 ```
 
@@ -258,14 +261,14 @@ Deletes `raskl-rag-api-pr-{N}` Lambda + Function URL.
 ### From local DB to Neon
 
 The local stacks use different embedding models (Qwen3-Embedding or BGE-M3) than Bedrock
-(Titan Embed v2). Vectors are not compatible across models, so chunks must be re-embedded
-when migrating. Use the migration script:
+(Cohere Embed v4). Vectors are not compatible across models, so chunks must be
+re-embedded when migrating. Use the migration script:
 
 ```bash
 # Dry run — count chunks without writing
 uv run python scripts/migrate_to_neon.py --dry-run
 
-# Full migration — reads chunks from local DB, re-embeds with Bedrock Titan, upserts to Neon
+# Full migration — reads chunks from local DB, re-embeds with Cohere Embed, upserts to Neon
 AWS_PROFILE=linusnorton uv run python scripts/migrate_to_neon.py \
   --neon-dsn "postgresql://...@...neon.tech/raskl_rag?sslmode=require"
 
@@ -275,7 +278,7 @@ AWS_PROFILE=linusnorton uv run python scripts/migrate_to_neon.py \
 ```
 
 The script is idempotent (uses upsert). It requires AWS credentials with Bedrock
-`InvokeModel` permission for Titan Embed v2.
+`InvokeModel` permission for Cohere Embed Multilingual v3.
 
 ### New documents via S3 upload
 

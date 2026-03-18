@@ -28,7 +28,7 @@ PDF files (scanned or born-digital)
                       ▼
 ┌─────────────────────────────────────────────────┐
 │  ras-chunker-indexer                            │
-│  Heading-aware chunking → Titan Embed v2        │
+│  Heading-aware chunking → Cohere Embed v4        │
 │  → PostgreSQL/pgvector (hybrid index)           │
 └─────────────────────┬───────────────────────────┘
                       │
@@ -84,7 +84,7 @@ Each app has a detailed README documenting design decisions and rationale:
 ## Prerequisites
 
 - **Python 3.11+** and [uv](https://docs.astral.sh/uv/)
-- **AWS credentials** with access to Bedrock models (Qwen3 VL, Titan Embed v2, Amazon Rerank v1)
+- **AWS credentials** with access to Bedrock models (Qwen3 VL, Cohere Embed v4, Cohere Rerank 3.5)
 - **Docker** (for PostgreSQL/pgvector and Open WebUI)
 - No GPU needed — all inference runs on AWS Bedrock
 
@@ -96,8 +96,8 @@ All model inference uses AWS Bedrock. No local model serving required.
 |-----------|---------------|
 | OCR / extraction | Qwen3-VL-235B via Converse API |
 | Chat LLM | Qwen3-235B-A22B via Converse API |
-| Embedding | Amazon Titan Embed Text v2 (1024 dims) |
-| Reranking | Amazon Rerank v1 |
+| Embedding | Cohere Embed v4 via EU inference profile (1024 dims) |
+| Reranking | Cohere Rerank 3.5 |
 
 ## Quick start (local)
 

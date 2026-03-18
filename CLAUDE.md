@@ -19,7 +19,7 @@ Open WebUI + local RAG API, local PostgreSQL, local PDF files. All model inferen
 # 1. Process all PDFs (Qwen3 VL via Bedrock)
 ./scripts/docproc.sh
 
-# 2. Embed + index into local PostgreSQL (Bedrock Titan Embed v2)
+# 2. Embed + index into local PostgreSQL (Cohere Embed v4)
 ./scripts/embed.sh
 
 # 3. Start RAG API (Bedrock for LLM/embed/rerank)
@@ -33,7 +33,7 @@ docker compose up open-webui
 Everything in AWS: Lambda (RAG API), App Runner (Open WebUI), Neon (serverless PostgreSQL), S3, Bedrock.
 
 Upload a PDF → DocProc Lambda (Qwen3 VL) → versioned JSONL to S3 → Chunker Lambda
-(Bedrock Titan Embed) → Neon pgvector → RAG API Lambda → Open WebUI (App Runner).
+(Cohere Embed) → Neon pgvector → RAG API Lambda → Open WebUI (App Runner).
 
 See `DEPLOYMENT.md` for full details.
 
@@ -66,7 +66,7 @@ uv run ras-chunker init-db
 # Dry-run: show chunk plan without embedding/indexing
 uv run ras-chunker plan --doc-id DOC_ID
 
-# Index a document (Bedrock Titan Embed v2 + PostgreSQL)
+# Index a document (Cohere Embed v4 + PostgreSQL)
 uv run ras-chunker index --doc-id DOC_ID
 
 # Index all processed documents
@@ -99,8 +99,8 @@ All model inference uses AWS Bedrock:
 | Component | Bedrock Model |
 |-----------|---------------|
 | Chat LLM | Qwen3-235B-A22B via Converse API |
-| Embedding | Amazon Titan Embed Text v2 (1024 dims) |
-| Reranking | Amazon Rerank v1 |
+| Embedding | Cohere Embed v4 via EU inference profile (1024 dims) |
+| Reranking | Cohere Rerank 3.5 |
 | OCR (docproc) | Qwen3-VL-235B via Converse API |
 
 Bedrock is the only provider — no local alternatives. See each app's README for model-specific config.

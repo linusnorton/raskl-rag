@@ -1,4 +1,4 @@
-"""AWS Bedrock reranking provider via Cohere Rerank."""
+"""AWS Bedrock reranking provider via Cohere Rerank 3.5."""
 
 from __future__ import annotations
 
@@ -8,16 +8,15 @@ from .base import RerankProvider
 
 log = logging.getLogger(__name__)
 
-_client = None
+_clients: dict[str, object] = {}
 
 
 def _get_client(region: str):
-    global _client
-    if _client is None:
+    if region not in _clients:
         import boto3
 
-        _client = boto3.client("bedrock-agent-runtime", region_name=region)
-    return _client
+        _clients[region] = boto3.client("bedrock-agent-runtime", region_name=region)
+    return _clients[region]
 
 
 class BedrockRerankProvider(RerankProvider):
@@ -44,6 +43,9 @@ class BedrockRerankProvider(RerankProvider):
                 "bedrockRerankingConfiguration": {
                     "modelConfiguration": {
                         "modelArn": f"arn:aws:bedrock:{self.region}::foundation-model/{self.model_id}",
+                        "additionalModelRequestFields": {
+                            "max_tokens_per_doc": 4096,
+                        },
                     },
                     "numberOfResults": top_k,
                 },

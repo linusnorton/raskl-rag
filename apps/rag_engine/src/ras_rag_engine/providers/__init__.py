@@ -45,7 +45,7 @@ def get_embed_provider(config: RAGConfig) -> EmbedProvider:
     from .bedrock_embed import BedrockEmbedProvider
 
     return BedrockEmbedProvider(
-        region=config.bedrock_region,
+        region=config.bedrock_embed_region,
         model_id=config.bedrock_embed_model_id,
         dimensions=config.embed_dimensions,
         task_prefix=config.embed_task_prefix,

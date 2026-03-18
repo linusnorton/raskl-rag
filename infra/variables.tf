@@ -31,15 +31,21 @@ variable "llm_model_id" {
 }
 
 variable "embed_model_id" {
-  description = "Bedrock model ID for embeddings"
+  description = "Bedrock model ID for embeddings (EU cross-region inference profile)"
   type        = string
-  default     = "amazon.titan-embed-text-v2:0"
+  default     = "eu.cohere.embed-v4:0"
+}
+
+variable "embed_region" {
+  description = "AWS region for embedding (Cohere Embed v4 not available in eu-west-2)"
+  type        = string
+  default     = "eu-west-1"
 }
 
 variable "rerank_model_id" {
-  description = "Bedrock model ID for reranking"
+  description = "Bedrock model ID for reranking (Cohere Rerank 3.5)"
   type        = string
-  default     = "amazon.rerank-v1:0"
+  default     = "cohere.rerank-v3-5:0"
 }
 
 variable "rerank_region" {

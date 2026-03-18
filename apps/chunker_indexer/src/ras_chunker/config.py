@@ -31,7 +31,8 @@ class ChunkerConfig(BaseSettings):
 
     # Bedrock
     bedrock_region: str = "eu-west-2"
-    bedrock_embed_model_id: str = "amazon.titan-embed-text-v2:0"
+    bedrock_embed_region: str = "eu-west-1"  # Cohere Embed v4 not available in eu-west-2
+    bedrock_embed_model_id: str = "eu.cohere.embed-v4:0"
 
     # Model Studio (Alibaba Cloud)
     model_studio_api_key: str = ""

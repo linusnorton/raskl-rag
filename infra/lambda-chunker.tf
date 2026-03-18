@@ -11,9 +11,10 @@ resource "aws_lambda_function" "chunker" {
   environment {
     variables = {
       # Embedding provider
-      CHUNKER_EMBED_PROVIDER         = "bedrock"
-      CHUNKER_BEDROCK_REGION         = var.aws_region
-      CHUNKER_BEDROCK_EMBED_MODEL_ID = var.embed_model_id
+      CHUNKER_EMBED_PROVIDER           = "bedrock"
+      CHUNKER_BEDROCK_REGION           = var.aws_region
+      CHUNKER_BEDROCK_EMBED_REGION     = var.embed_region
+      CHUNKER_BEDROCK_EMBED_MODEL_ID   = var.embed_model_id
       CHUNKER_EMBED_DIMENSIONS       = tostring(var.embed_dimensions)
       CHUNKER_EMBED_TASK_PREFIX      = ""
 
