@@ -225,6 +225,36 @@ re-indexed. Each row captures: `doc_id`, `version`, `chunks_total`, `chunks_adde
 how many chunks actually changed. This audit trail helps measure whether pipeline improvements
 are producing different (hopefully better) output, and by how much.
 
+### D12 — Article-range filtering (bleed removal)
+
+**What we chose:** Before chunking, blocks are filtered to only those belonging to the target
+article. This handles "bleed" from adjacent articles in journal PDFs where page boundaries don't
+align cleanly with article boundaries.
+
+Two levels of filtering are applied:
+
+1. **Page-level filtering** — Drops all blocks with `page_num_1` (offset-adjusted) outside the
+   `[start, end]` range parsed from `page_range_label` (e.g. `"57-61"`). This removes JSTOR/MUSE
+   cover pages and any full pages from adjacent articles. Applies to 98/118 documents that have
+   `page_range_label` metadata.
+
+2. **Title-based trimming on first page** — On the article's first page (`start`), finds a heading
+   block matching the document title using normalized word overlap (lowercase, strip punctuation,
+   ≥60% word overlap threshold). All content blocks before that heading are discarded — they belong
+   to the preceding article. Falls back to no trimming if no title match is found (safe default).
+   Works for ~79% of documents with `page_range_label`.
+
+Footnotes are also filtered by page range — footnotes on bleed pages are excluded from the
+footnote map so they won't be inlined into chunks.
+
+**Why in the chunker, not docproc:** The raw extraction output should remain complete and
+unfiltered. Filtering is a chunker concern because it depends on metadata (`page_range_label`,
+`title`) that may be corrected via overlays without re-running extraction.
+
+**Safe defaults:** Documents without `page_range_label` are unaffected (all blocks kept).
+Documents where the title heading isn't found on the first page still get page-level filtering
+but no title-based trimming.
+
 ## Database schema
 
 ```sql

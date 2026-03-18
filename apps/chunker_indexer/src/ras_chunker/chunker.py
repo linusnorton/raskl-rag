@@ -14,6 +14,7 @@ import hashlib
 
 from .config import ChunkerConfig
 from .loader import DocprocOutput
+from .page_filter import filter_blocks_by_article_range, filter_footnotes_by_page_range
 from .schema import Chunk, StitchedBlock
 
 # Rough token estimate: 1 token ≈ 4 characters (for English text).
@@ -29,10 +30,13 @@ def _make_chunk_id(doc_id: str, chunk_index: int) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:24]
 
 
-def _build_footnote_map(output: DocprocOutput) -> dict[str, tuple[int, str, str]]:
+def _build_footnote_map(
+    output: DocprocOutput, page_range_label: str | None = None
+) -> dict[str, tuple[int, str, str]]:
     """Map footnote_id → (footnote_number, cleaned text, footnote_type)."""
+    footnotes = filter_footnotes_by_page_range(output.footnotes, page_range_label)
     result: dict[str, tuple[int, str, str]] = {}
-    for fn in output.footnotes:
+    for fn in footnotes:
         text = fn.text_clean if fn.text_clean else fn.text_raw
         fn_type = getattr(fn, "footnote_type", "explanatory")
         result[fn.footnote_id] = (fn.footnote_number, text.strip(), fn_type)
@@ -78,7 +82,8 @@ def chunk_blocks(
     config: ChunkerConfig,
 ) -> list[Chunk]:
     """Split stitched blocks into semantic chunks."""
-    footnote_map = _build_footnote_map(output)
+    blocks = filter_blocks_by_article_range(blocks, output.meta.page_range_label, output.meta.title)
+    footnote_map = _build_footnote_map(output, output.meta.page_range_label)
 
     # Accumulate raw chunks (before merging tiny ones)
     raw_chunks: list[_RawChunk] = []

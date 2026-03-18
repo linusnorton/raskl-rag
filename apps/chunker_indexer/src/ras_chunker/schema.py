@@ -53,6 +53,7 @@ class DocMeta(BaseModel):
     series: str | None = None
     description: str | None = None
     page_offset: int = 0
+    page_range_label: str | None = None
     sha256_pdf: str
     s3_prefix: str = ""
 

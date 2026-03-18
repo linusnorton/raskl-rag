@@ -129,6 +129,7 @@ class DocprocOutput:
             series=raw.get("series"),
             description=raw.get("description"),
             page_offset=raw.get("page_offset", 0),
+            page_range_label=raw.get("page_range_label"),
             sha256_pdf=raw["sha256_pdf"],
         )
 

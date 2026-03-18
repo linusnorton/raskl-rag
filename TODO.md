@@ -30,7 +30,13 @@ calibrate from response `usage.inputTokens` / `usage.outputTokens`.
 
 ## Journal split / duplication
 
-The journals were originally published together in a collection. The PDFs have been divided up by journal but some journals start on the same page that a preceeding one finishes. Can we reliably detect and filter out the preceeding and following articles? E.g. file:///home/linus/Downloads/Stirling-RedWhiteFlag-1925%20(1).pdf
+~~The journals were originally published together in a collection. The PDFs have been divided up by journal but some journals start on the same page that a preceeding one finishes. Can we reliably detect and filter out the preceeding and following articles?~~
+
+**Implemented:** Page-level filtering (drops blocks outside `page_range_label`) + title-based trimming (drops preceding-article content on shared first pages). Applied in the chunker pipeline. See `apps/chunker_indexer/README.md` D12.
+
+**Remaining:**
+- Last-page trimming: content from the *next* article on the shared last page is not yet filtered (would need the next article's title or a content-boundary heuristic)
+- Deeper content detection for documents without `page_range_label` (20/118 docs)
 
 
 ## Document duplication
