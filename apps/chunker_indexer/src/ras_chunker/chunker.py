@@ -39,6 +39,22 @@ def _build_footnote_map(output: DocprocOutput) -> dict[str, tuple[int, str, str]
     return result
 
 
+def _collect_overlap_blocks(chunk: _RawChunk, overlap_tokens: int) -> list[StitchedBlock]:
+    """Walk blocks backwards to collect up to overlap_tokens worth of blocks."""
+    if overlap_tokens <= 0 or not chunk.blocks:
+        return []
+    collected: list[StitchedBlock] = []
+    tokens = 0
+    for block in reversed(chunk.blocks):
+        bt = _estimate_tokens(block.text)
+        if tokens + bt > overlap_tokens and collected:
+            break
+        collected.append(block)
+        tokens += bt
+    collected.reverse()
+    return collected
+
+
 def _format_chunk_text(heading: str | None, body_parts: list[str], footnote_texts: list[str]) -> str:
     """Assemble final chunk text from heading, body, and footnotes."""
     parts: list[str] = []
@@ -87,8 +103,9 @@ def chunk_blocks(
         # Check if adding this block would exceed max tokens
         block_tokens = _estimate_tokens(block.text)
         if current.has_content() and current.tokens + block_tokens > config.max_chunk_tokens:
+            overlap = _collect_overlap_blocks(current, config.overlap_tokens)
             raw_chunks.append(current)
-            current = _RawChunk(heading=current.heading)
+            current = _RawChunk(heading=current.heading, overlap_blocks=overlap)
 
         current.add_block(block)
 
@@ -115,7 +132,8 @@ def chunk_blocks(
             else:
                 footnote_texts.append(f"[{fn_num}] {fn_text}")
 
-        text = _format_chunk_text(raw.heading, [b.text for b in raw.blocks], footnote_texts)
+        body_parts = [b.text for b in raw.overlap_blocks] + [b.text for b in raw.blocks]
+        text = _format_chunk_text(raw.heading, body_parts, footnote_texts)
         token_count = _estimate_tokens(text)
         block_ids = [bid for b in raw.blocks for bid in b.block_ids]
         if raw.heading_block:
@@ -141,10 +159,16 @@ def chunk_blocks(
 class _RawChunk:
     """Mutable accumulator for building a chunk."""
 
-    def __init__(self, heading: str | None = None, heading_block: StitchedBlock | None = None) -> None:
+    def __init__(
+        self,
+        heading: str | None = None,
+        heading_block: StitchedBlock | None = None,
+        overlap_blocks: list[StitchedBlock] | None = None,
+    ) -> None:
         self.heading = heading
         self.heading_block = heading_block
         self.blocks: list[StitchedBlock] = []
+        self.overlap_blocks: list[StitchedBlock] = overlap_blocks or []
         self.tokens: int = 0
 
     def add_block(self, block: StitchedBlock) -> None:
@@ -157,6 +181,7 @@ class _RawChunk:
     @property
     def start_page(self) -> int:
         pages = [b.start_page for b in self.blocks]
+        pages.extend(b.start_page for b in self.overlap_blocks)
         if self.heading_block:
             pages.append(self.heading_block.start_page)
         return min(pages) if pages else 1
@@ -164,6 +189,7 @@ class _RawChunk:
     @property
     def end_page(self) -> int:
         pages = [b.end_page for b in self.blocks]
+        pages.extend(b.end_page for b in self.overlap_blocks)
         if self.heading_block:
             pages.append(self.heading_block.end_page)
         return max(pages) if pages else 1

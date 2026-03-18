@@ -34,7 +34,7 @@ The pipeline runs in this order for each document:
 1. **Load** — reads `documents.jsonl`, `text_blocks.jsonl`, `footnotes.jsonl`,
    `footnote_refs.jsonl`, `figures.jsonl` from docproc output
 2. **Restitch** — merges paragraphs that were split across page boundaries
-3. **Chunk** — splits into retrieval-sized passages (heading-bounded, ≤512 tokens)
+3. **Chunk** — splits into retrieval-sized passages (heading-bounded, ≤1024 tokens)
 4. **Embed** — generates a 1024-dimension vector for each chunk
 5. **Index** — upserts into the `documents`, `chunks`, and `figures` tables
 
@@ -43,8 +43,14 @@ The pipeline runs in this order for each document:
 ### D1 — Heading-based semantic chunking, not fixed-size windows
 
 **What we chose:** A new `heading` block always starts a new chunk. Paragraphs accumulate until
-adding the next one would exceed 512 tokens, at which point the current chunk is flushed and a
+adding the next one would exceed 1024 tokens, at which point the current chunk is flushed and a
 new one begins with the same heading carried forward.
+
+When a chunk is split at the max-token boundary (not at a heading), the last ~128 tokens worth
+of blocks from the flushed chunk are prepended to the new chunk as overlap context. This overlap
+text is included in the chunk's content (and therefore embedded) but the overlap block IDs are
+excluded from `block_ids` to avoid duplicate block references across chunks. Heading splits do
+not carry overlap, since the heading marks a clean semantic boundary.
 
 Token counting uses a rough estimate of one token per four characters. This avoids loading a
 tokenizer just for chunking and is accurate enough at this scale.
@@ -54,11 +60,12 @@ A chunk that starts mid-sentence is harder to understand in isolation, produces 
 representation, and looks odd when cited in the chat UI. Headings are natural semantic boundaries
 in academic writing: a new heading signals a new topic.
 
-**Why 512 tokens:** Embedding models (including Amazon Titan Embed v2) have context windows
-in the range of 512–8192 tokens, but embedding quality degrades for very long inputs. 512 tokens
-gives a passage long enough to carry meaningful context while fitting comfortably in the model's
-effective range. It also means many chunks fit in the LLM's prompt window, so more context is
-available per query.
+**Why 1024 tokens:** The corpus is predominantly narrative historical text (journal articles, not
+short diary entries). 512 tokens split long passages unnecessarily, breaking narrative flow.
+1024 keeps more passages intact while still fitting comfortably in the embedding model's effective
+range (Titan Embed v2 supports up to 8192 tokens). The overlap mechanism (configurable via
+`CHUNKER_OVERLAP_TOKENS`, default 128) preserves context continuity for the rare cases where
+1024 tokens is still exceeded.
 
 ### D2 — Cross-page paragraph restitching
 
@@ -280,7 +287,8 @@ Key environment variables (prefix `CHUNKER_`):
 | `CHUNKER_EMBED_BATCH_SIZE` | `32` | Number of chunks per embedding batch |
 | `CHUNKER_EMBED_DIMENSIONS` | `1024` | Embedding vector dimensions |
 | `CHUNKER_EMBED_TASK_PREFIX` | `""` | Must match chat UI embed prefix |
-| `CHUNKER_MAX_CHUNK_TOKENS` | `512` | Maximum tokens per chunk |
+| `CHUNKER_MAX_CHUNK_TOKENS` | `1024` | Maximum tokens per chunk |
+| `CHUNKER_OVERLAP_TOKENS` | `128` | Overlap tokens on max-size splits (0 to disable) |
 | `CHUNKER_RESTITCH_ENABLED` | `true` | Enable cross-page paragraph merging |
 | `CHUNKER_DB_NAME` | `raskl_rag` | PostgreSQL database name |
 | `CHUNKER_DATABASE_DSN` | _(empty)_ | Override full connection string (e.g. Neon DSN) |

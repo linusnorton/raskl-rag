@@ -60,14 +60,48 @@ class TestChunkBoundaries:
         long_text = "x" * 200
         blocks = [
             _sb("Heading", block_type="heading"),
-            _sb(long_text),
-            _sb(long_text),
-            _sb(long_text),
+            _sb(long_text, block_id="b1"),
+            _sb(long_text, block_id="b2"),
+            _sb(long_text, block_id="b3"),
         ]
-        config = ChunkerConfig(max_chunk_tokens=80, min_chunk_tokens=1)
+        config = ChunkerConfig(max_chunk_tokens=80, min_chunk_tokens=1, overlap_tokens=50)
         chunks = chunk_blocks(blocks, _make_output(), config)
         # Should split after exceeding 80 tokens
         assert len(chunks) >= 2
+        # Second chunk should contain overlap text from the first chunk
+        assert long_text in chunks[1].text
+        # Overlap block_ids should NOT appear in the second chunk's block_ids
+        second_block_ids = chunks[1].block_ids
+        assert "b1" not in second_block_ids
+
+    def test_no_overlap_on_heading_split(self):
+        """Heading boundaries should NOT carry overlap from the previous chunk."""
+        blocks = [
+            _sb("Heading A", block_type="heading"),
+            _sb("Content A paragraph one."),
+            _sb("Content A paragraph two."),
+            _sb("Heading B", block_type="heading"),
+            _sb("Content B paragraph one."),
+        ]
+        config = ChunkerConfig(max_chunk_tokens=1000, min_chunk_tokens=1, overlap_tokens=128)
+        chunks = chunk_blocks(blocks, _make_output(), config)
+        assert len(chunks) == 2
+        # Second chunk should NOT contain text from first chunk
+        assert "Content A" not in chunks[1].text
+
+    def test_overlap_disabled_when_zero(self):
+        """overlap_tokens=0 should produce no overlap (backward compat)."""
+        long_text = "x" * 200
+        blocks = [
+            _sb(long_text, block_id="b1"),
+            _sb(long_text, block_id="b2"),
+            _sb(long_text, block_id="b3"),
+        ]
+        config = ChunkerConfig(max_chunk_tokens=80, min_chunk_tokens=1, overlap_tokens=0)
+        chunks = chunk_blocks(blocks, _make_output(), config)
+        assert len(chunks) >= 2
+        # No overlap: second chunk should not contain first chunk's block_id
+        assert "b1" not in chunks[1].block_ids
 
     def test_small_chunks_merged(self):
         blocks = [
