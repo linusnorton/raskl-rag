@@ -291,6 +291,36 @@ text spans, VL often false-positives on text that describes figures on other pag
 says "Fig. 1. Map of Peninsula Malaya" and VL emits `![Figure](Map of Peninsula Malaya)` even
 though the page is pure text). Gating VL scan rendering to textless pages eliminates these.
 
+### D11 — Figure extraction filtering (text pages, artifacts, tiny images)
+
+**Problem:** Three sources of junk figures were polluting the index: (1) VL scan figures on text
+pages — the VL model emits `![Figure]()` tags on scanned text pages, causing 346 text-only page
+renders across 15 documents; (2) tiny embedded images — 93+ identical 10×10 pixel PDF artifacts
+(form fields, placeholders); (3) extreme aspect ratio slivers (e.g. 4×375 pixels).
+
+**What we chose — three-layer filtering:**
+
+1. **VL text gate** (`VL_TEXT_THRESHOLD=100`): Before rendering a textless scan page as a figure,
+   check how many characters the VL model extracted. If ≥100 chars of body text, it's a text page
+   where VL hallucinated a figure tag — skip the render. Real illustration pages (photographs, maps,
+   plates) produce little or no VL text, just the `![Figure]()` tag.
+
+2. **Minimum dimension** (`MIN_IMAGE_DIMENSION=20`): Skip embedded images where both width and
+   height are ≤20 pixels. These are PDF artifacts, form fields, or placeholder images — no
+   legitimate figure is this small.
+
+3. **Aspect ratio** (`MAX_ASPECT_RATIO=20`): Skip embedded images with extreme aspect ratios
+   (max/min dimension >20:1). These are thin line artifacts or rendering glitches, not figures.
+
+**Chunker safety net:** The chunker's `_is_substantial_figure()` also filters `vl_detected_scan`
+figures without a human-assigned caption (`caption_text_clean`). This catches any text-page scan
+figures that slip through docproc filtering when re-indexing without reprocessing.
+
+**Why VL text length works:** On a real illustration page (photograph, engraving, map), the VL
+model sees the image and emits only `![Figure](brief description)` — producing zero text blocks.
+On a text page it incorrectly tagged, it also extracts hundreds of characters of body text. The
+100-char threshold cleanly separates these cases across the entire corpus.
+
 ## Output format
 
 All output goes to `data/out/{doc_id}/`:

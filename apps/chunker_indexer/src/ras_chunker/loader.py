@@ -80,6 +80,10 @@ def _is_substantial_figure(fig: _FigureRecord) -> bool:
     """Filter out rendered clips, logos, icons, and journal cover thumbnails."""
     if fig.derived_from == "rendered_clip":
         return False
+    # VL-detected scan figures without a human-assigned caption are almost always
+    # text pages that the VL model incorrectly tagged as containing illustrations.
+    if fig.derived_from == "vl_detected_scan" and not fig.caption_text_clean:
+        return False
     # Page 1 uncaptioned images are JSTOR/Project MUSE cover elements (logo, journal cover)
     if fig.page_num_1 == 1 and not fig.caption_text_clean:
         return False

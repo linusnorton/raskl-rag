@@ -232,7 +232,7 @@ def _run_pipeline(pdf_path: Path, out_dir: Path, max_pages: int | None, page_ran
 
     # Step 14: Figure detection
     progress.set_postfix_str("Figures")
-    figures = detect_figures(mupdf_data, config, doc_id, page_rotations, vl_figure_pages)
+    figures = detect_figures(mupdf_data, config, doc_id, page_rotations, vl_figure_pages, blocks_by_page)
     progress.update(1)
 
     # Step 15: Caption detection

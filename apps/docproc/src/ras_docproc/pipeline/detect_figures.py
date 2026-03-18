@@ -11,7 +11,7 @@ from PIL import Image
 
 from ras_docproc.config import PipelineConfig
 from ras_docproc.pipeline.extract_mupdf import MuPDFPageData
-from ras_docproc.schema import FigureRecord
+from ras_docproc.schema import FigureRecord, TextBlockRecord
 from ras_docproc.utils.hashing import make_block_id
 from ras_docproc.utils.io import ensure_dir
 
@@ -20,6 +20,9 @@ logger = logging.getLogger(__name__)
 THUMB_SIZE = (200, 200)
 FULL_PAGE_AREA_THRESHOLD = 0.90  # Skip images covering ≥90% of page area (pages with text spans)
 SCAN_BG_THRESHOLD = 0.70  # On pages with no text spans, images ≥70% are scan backgrounds
+VL_TEXT_THRESHOLD = 100  # If VL extracted ≥100 chars of text from a scan page, it's text not a figure
+MIN_IMAGE_DIMENSION = 20  # Skip images ≤20px in both dimensions (PDF artifacts, form fields)
+MAX_ASPECT_RATIO = 20  # Skip images with extreme aspect ratios (thin slivers, line artifacts)
 
 
 def detect_figures(
@@ -28,12 +31,15 @@ def detect_figures(
     doc_id: str,
     page_rotations: dict[int, int] | None = None,
     vl_figure_pages: dict[int, list[str]] | None = None,
+    blocks_by_page: dict[int, list[TextBlockRecord]] | None = None,
 ) -> list[FigureRecord]:
     """Extract embedded images and produce normalized JPG + thumbnails.
 
     For pages with suggested rotation, renders the page and rotates the clip.
     For scanned PDFs where the VL model detected illustrations on a page,
-    renders the full page as a figure instead of skipping it.
+    renders the full page as a figure instead of skipping it — unless the VL
+    model also extracted substantial text from that page, indicating it's a
+    text page (not an illustration).
 
     Args:
         mupdf_data: Per-page MuPDF extraction data.
@@ -42,6 +48,8 @@ def detect_figures(
         page_rotations: Optional dict of page_num -> suggested_rotation_cw.
         vl_figure_pages: Optional dict of page_num -> list of figure descriptions
             detected by the VL model (from ![Figure](...) tags).
+        blocks_by_page: Optional dict of page_num -> list of VL text blocks.
+            Used to filter scan pages that are actually text (not illustrations).
 
     Returns:
         List of FigureRecord.
@@ -49,11 +57,22 @@ def detect_figures(
     assets_dir = ensure_dir(config.out_dir / "out" / doc_id / "assets")
     page_rotations = page_rotations or {}
     vl_figure_pages = vl_figure_pages or {}
+    blocks_by_page = blocks_by_page or {}
     figures: list[FigureRecord] = []
 
     skipped_scans = 0
+    skipped_text_scans = 0
+    skipped_tiny = 0
     rendered_scans = 0
     rendered_scan_pages: set[int] = set()  # Track pages already rendered to avoid duplicates
+
+    # Identify scan pages where VL extracted substantial text — these are text pages,
+    # not illustrations, even though the VL model also emitted a ![Figure]() tag.
+    vl_text_pages: set[int] = set()
+    for pn, blocks in blocks_by_page.items():
+        total_chars = sum(len(b.text_raw or "") for b in blocks)
+        if total_chars >= VL_TEXT_THRESHOLD:
+            vl_text_pages.add(pn)
 
     # Pages with no MuPDF text spans are pure image scans (no OCR layer).
     # Use a lower threshold to skip scan background images on these pages.
@@ -84,6 +103,11 @@ def detect_figures(
                     # Skip if the page already has real images — they'll be extracted normally.
                     # Only trust VL figure tags on textless pages — on pages with OCR text,
                     # VL often false-positives on text that describes figures on other pages.
+                    # Also skip if VL extracted substantial text — it's a text page, not a figure.
+                    if page_num in vl_text_pages and page_num in vl_figure_pages:
+                        skipped_text_scans += 1
+                        skipped_scans += 1
+                        continue
                     if (
                         page_num in vl_figure_pages
                         and page_num not in rendered_scan_pages
@@ -101,6 +125,16 @@ def detect_figures(
                     else:
                         skipped_scans += 1
                     continue
+
+            # Skip tiny images (PDF artifacts, form fields, placeholders)
+            w, h = img_info.width, img_info.height
+            if w <= MIN_IMAGE_DIMENSION and h <= MIN_IMAGE_DIMENSION:
+                skipped_tiny += 1
+                continue
+            # Skip extreme aspect ratios (thin slivers, line artifacts)
+            if w > 0 and h > 0 and max(w, h) / min(w, h) > MAX_ASPECT_RATIO:
+                skipped_tiny += 1
+                continue
 
             # Save original image bytes
             ext = img_info.ext or "png"
@@ -155,6 +189,10 @@ def detect_figures(
         logger.info("Detected %d textless pages (pure image scans, threshold=%.0f%%)", len(textless_pages), SCAN_BG_THRESHOLD * 100)
     if skipped_scans > 0:
         logger.info("Skipped %d full-page scan images", skipped_scans)
+    if skipped_text_scans > 0:
+        logger.info("Skipped %d VL-detected scan figures that were actually text pages", skipped_text_scans)
+    if skipped_tiny > 0:
+        logger.info("Skipped %d tiny/artifact images (≤%dpx or aspect ratio >%d:1)", skipped_tiny, MIN_IMAGE_DIMENSION, MAX_ASPECT_RATIO)
     if rendered_scans > 0:
         logger.info("Rendered %d full-page scans as figures (VL-detected illustrations)", rendered_scans)
     logger.info("Extracted %d figures across %d pages", len(figures), len(mupdf_data))
