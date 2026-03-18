@@ -7,10 +7,9 @@ import logging
 import os
 import time
 import uuid
-
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request, UploadFile
+from fastapi import Depends, FastAPI, Form, HTTPException, Query, UploadFile
 from fastapi.responses import RedirectResponse, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
@@ -191,7 +190,7 @@ async def _stream_response(
             all_chunks = chunks
             # Send incremental content delta
             if len(partial_text) > len(prev_text):
-                delta = partial_text[len(prev_text):]
+                delta = partial_text[len(prev_text) :]
                 prev_text = partial_text
                 yield {"data": _build_chunk_event(completion_id, content=delta)}
 
@@ -205,7 +204,7 @@ async def _stream_response(
         else:
             final_with_citations = renumber_response(prev_text, all_chunks)
             if len(final_with_citations) > len(prev_text):
-                citation_delta = final_with_citations[len(prev_text):]
+                citation_delta = final_with_citations[len(prev_text) :]
                 yield {"data": _build_chunk_event(completion_id, content=citation_delta)}
 
     except Exception as e:
@@ -279,12 +278,12 @@ async def get_image(
 
 # OpenAI voice → Polly VoiceId mapping
 _POLLY_VOICE_MAP = {
-    "alloy": "Arthur",    # British male (neural)
-    "echo": "Brian",      # British male (neural)
-    "nova": "Amy",        # British female (neural)
-    "fable": "Zhiyu",     # Mandarin Chinese female (standard)
+    "alloy": "Arthur",  # British male (neural)
+    "echo": "Brian",  # British male (neural)
+    "nova": "Amy",  # British female (neural)
+    "fable": "Zhiyu",  # Mandarin Chinese female (standard)
     "shimmer": "Hiujin",  # Cantonese female (neural)
-    "onyx": "Kajal",      # Indian English/Hindi female (neural)
+    "onyx": "Kajal",  # Indian English/Hindi female (neural)
 }
 
 # Voices only available with "standard" engine (not "neural")

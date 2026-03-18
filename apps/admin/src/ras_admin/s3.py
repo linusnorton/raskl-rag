@@ -5,9 +5,9 @@ from __future__ import annotations
 import json
 import time
 from datetime import timezone
+from typing import Any
 
 UTC = timezone.utc
-from typing import Any
 
 
 def get_client():

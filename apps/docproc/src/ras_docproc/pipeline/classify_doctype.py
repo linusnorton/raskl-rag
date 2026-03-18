@@ -61,9 +61,7 @@ def classify_document_type(
     collected: list[str] = []
     collected_len = 0
     for page_num in sorted(blocks_by_page.keys()):
-        page_text = "\n".join(
-            (b.text_clean or b.text_raw) for b in blocks_by_page[page_num]
-        ).strip()
+        page_text = "\n".join((b.text_clean or b.text_raw) for b in blocks_by_page[page_num]).strip()
         if len(page_text) < _MIN_PAGE_TEXT:
             continue
         collected.append(page_text)

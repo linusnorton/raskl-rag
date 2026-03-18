@@ -5,9 +5,7 @@ from __future__ import annotations
 import json
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-from ras_docproc.schema import DocumentRecord, MetadataSource, TextBlockRecord, BBox
+from ras_docproc.schema import BBox, DocumentRecord, MetadataSource, TextBlockRecord
 
 
 def _make_document(**kwargs) -> DocumentRecord:
@@ -197,25 +195,25 @@ class TestEnrichMetadataLLM:
 
     @patch("boto3.client")
     def test_full_llm_enrichment_with_mock(self, mock_boto3_client):
-        from ras_docproc.pipeline.enrich_metadata_llm import enrich_metadata_llm
         from ras_docproc.config import PipelineConfig
+        from ras_docproc.pipeline.enrich_metadata_llm import enrich_metadata_llm
 
         # Mock Bedrock response
-        llm_response = json.dumps({
-            "title": "Swettenham's Perak Journals",
-            "author": "Frank A. Swettenham",
-            "year": 1874,
-            "language": "en",
-            "keywords": ["Perak", "colonial administration"],
-            "description": "Journals kept by Swettenham during his time in Perak.",
-            "document_type": "primary_source",
-        })
+        llm_response = json.dumps(
+            {
+                "title": "Swettenham's Perak Journals",
+                "author": "Frank A. Swettenham",
+                "year": 1874,
+                "language": "en",
+                "keywords": ["Perak", "colonial administration"],
+                "description": "Journals kept by Swettenham during his time in Perak.",
+                "document_type": "primary_source",
+            }
+        )
 
         mock_client = MagicMock()
         mock_boto3_client.return_value = mock_client
-        mock_client.converse.return_value = {
-            "output": {"message": {"content": [{"text": llm_response}]}}
-        }
+        mock_client.converse.return_value = {"output": {"message": {"content": [{"text": llm_response}]}}}
 
         config = PipelineConfig(pdf_path="/tmp/test.pdf")
         doc = _make_document()
@@ -407,9 +405,7 @@ class TestEnrichMetadataWeb:
 
 class TestMetadataSource:
     def test_metadata_source_serialization(self):
-        source = MetadataSource(
-            field="title", source="crossref", confidence=1.0, raw_value="Test Title"
-        )
+        source = MetadataSource(field="title", source="crossref", confidence=1.0, raw_value="Test Title")
         data = source.model_dump()
         assert data["field"] == "title"
         assert data["source"] == "crossref"

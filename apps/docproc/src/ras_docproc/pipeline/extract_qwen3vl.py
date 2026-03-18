@@ -40,10 +40,23 @@ def _render_page_to_image_bytes(pdf_path: str, page_index: int, dpi: int) -> tup
             mat = fitz.Matrix(zoom, zoom)
             pix = page.get_pixmap(matrix=mat)
             img_bytes = pix.tobytes("jpeg", jpg_quality=JPEG_QUALITY)
-            logger.debug("Page %d: %d DPI JPEG Q%d → %d bytes (limit %d)", page_index + 1, current_dpi, JPEG_QUALITY, len(img_bytes), MAX_IMAGE_BYTES)
+            logger.debug(
+                "Page %d: %d DPI JPEG Q%d → %d bytes (limit %d)",
+                page_index + 1,
+                current_dpi,
+                JPEG_QUALITY,
+                len(img_bytes),
+                MAX_IMAGE_BYTES,
+            )
             if len(img_bytes) <= MAX_IMAGE_BYTES:
                 if current_dpi != dpi:
-                    logger.info("Page %d: reduced DPI from %d to %d (%d bytes)", page_index + 1, dpi, current_dpi, len(img_bytes))
+                    logger.info(
+                        "Page %d: reduced DPI from %d to %d (%d bytes)",
+                        page_index + 1,
+                        dpi,
+                        current_dpi,
+                        len(img_bytes),
+                    )
                 return img_bytes, page_width, page_height
 
         # Last resort: use lowest DPI even if still over limit
@@ -99,7 +112,11 @@ def _call_bedrock(
             # Don't retry non-transient errors (auth, access denied, payload too large)
             if isinstance(e, ReadTimeoutError):
                 retryable = True
-            elif e.response["Error"]["Code"] in ("ThrottlingException", "ServiceUnavailableException", "InternalServerException"):
+            elif e.response["Error"]["Code"] in (
+                "ThrottlingException",
+                "ServiceUnavailableException",
+                "InternalServerException",
+            ):
                 retryable = True
             elif e.response["Error"]["Code"] == "ValidationException" and "limit exceeded" not in str(e):
                 retryable = True
@@ -145,7 +162,10 @@ def _call_model_studio(
                         "role": "user",
                         "content": [
                             {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
-                            {"type": "text", "text": "Convert this page to Markdown following the system instructions."},
+                            {
+                                "type": "text",
+                                "text": "Convert this page to Markdown following the system instructions.",
+                            },
                         ],
                     },
                 ],
@@ -320,7 +340,8 @@ def _process_page(
 
 
 def extract_with_qwen3vl(
-    config: PipelineConfig, doc_id: str,
+    config: PipelineConfig,
+    doc_id: str,
 ) -> tuple[dict[int, list[TextBlockRecord]], dict[int, list[str]]]:
     """Extract structured text blocks from PDF using Bedrock Qwen3 VL.
 
@@ -368,9 +389,7 @@ def extract_with_qwen3vl(
 
     with ThreadPoolExecutor(max_workers=config.qwen3vl_max_workers) as executor:
         futures = {
-            executor.submit(
-                _process_page, config, doc_id, page_num, *rendered[page_num]
-            ): page_num
+            executor.submit(_process_page, config, doc_id, page_num, *rendered[page_num]): page_num
             for page_num in pages_to_process
         }
 
@@ -386,7 +405,12 @@ def extract_with_qwen3vl(
             except Exception:
                 logger.exception("Qwen3 VL: failed on page %d", page_num)
     bedrock_time = time.time() - t0
-    logger.info("Qwen3 VL: Bedrock calls for %d pages in %.1fs (max_workers=%d)", len(pages_to_process), bedrock_time, config.qwen3vl_max_workers)
+    logger.info(
+        "Qwen3 VL: Bedrock calls for %d pages in %.1fs (max_workers=%d)",
+        len(pages_to_process),
+        bedrock_time,
+        config.qwen3vl_max_workers,
+    )
 
     total_blocks = sum(len(v) for v in blocks_by_page.values())
     if figures_by_page:

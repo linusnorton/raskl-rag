@@ -6,7 +6,6 @@ import base64
 import json
 import os
 import re
-import sys
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -314,8 +313,10 @@ th { background: #f0f0f0; }
     ]
 
     # Summary table
-    html_parts.append("<h2>Summary</h2><table><tr><th>Model</th><th>Pages</th><th>Avg Time/Page</th>"
-                      "<th>Total Input Tokens</th><th>Total Output Tokens</th><th>Total Cost</th></tr>")
+    html_parts.append(
+        "<h2>Summary</h2><table><tr><th>Model</th><th>Pages</th><th>Avg Time/Page</th>"
+        "<th>Total Input Tokens</th><th>Total Output Tokens</th><th>Total Cost</th></tr>"
+    )
     for name in model_names:
         s = summary[name]
         cost_str = f"${s['total_cost']:.4f}" if s["total_cost"] is not None else "TBD"
@@ -328,7 +329,7 @@ th { background: #f0f0f0; }
     # Per-page sections
     for (pdf_name, page_num), page_results in pages.items():
         desc = page_results[0].description if page_results else ""
-        html_parts.append(f'<div class="page-section">')
+        html_parts.append('<div class="page-section">')
         html_parts.append(f"<h2>{pdf_name} — Page {page_num} ({desc})</h2>")
 
         # Try to embed page image
@@ -337,9 +338,11 @@ th { background: #f0f0f0; }
             try:
                 img_bytes, _, _ = render_page(str(pdf_path), page_num - 1)
                 b64_img = base64.b64encode(img_bytes).decode()
-                html_parts.append(f'<div class="page-header">'
-                                  f'<img class="page-image" src="data:image/jpeg;base64,{b64_img}" '
-                                  f'alt="Page {page_num}"></div>')
+                html_parts.append(
+                    f'<div class="page-header">'
+                    f'<img class="page-image" src="data:image/jpeg;base64,{b64_img}" '
+                    f'alt="Page {page_num}"></div>'
+                )
             except Exception:
                 pass
 
@@ -354,11 +357,12 @@ th { background: #f0f0f0; }
                     html_parts.append(f'<div class="error">{r.error}</div>')
                 else:
                     import html
+
                     html_parts.append(f'<div class="markdown-output">{html.escape(r.markdown)}</div>')
                     cost_str = f"${r.cost_usd:.4f}" if r.cost_usd is not None else "TBD"
                     html_parts.append(
                         f'<div class="stats">{r.elapsed_seconds:.1f}s | '
-                        f'{r.input_tokens:,} in / {r.output_tokens:,} out | {cost_str}</div>'
+                        f"{r.input_tokens:,} in / {r.output_tokens:,} out | {cost_str}</div>"
                     )
             else:
                 html_parts.append('<div class="error">No result</div>')
@@ -400,9 +404,9 @@ def main() -> None:
             print(f"SKIP {pdf_rel} p{page_num} — file not found")
             continue
 
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"Page: {pdf_rel} p{page_num} ({description})")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
 
         # Render once, reuse for all models
         img_bytes, pw, ph = render_page(str(pdf_path), page_num - 1)
@@ -430,35 +434,39 @@ def main() -> None:
                 if model["input_cost_per_m"] is not None and model["output_cost_per_m"] is not None:
                     cost = (in_tok * model["input_cost_per_m"] + out_tok * model["output_cost_per_m"]) / 1_000_000
 
-                results.append(PageResult(
-                    pdf_name=pdf_rel,
-                    page_num=page_num,
-                    description=description,
-                    model_name=model_name,
-                    provider=model["provider"],
-                    markdown=md,
-                    input_tokens=in_tok,
-                    output_tokens=out_tok,
-                    elapsed_seconds=elapsed,
-                    cost_usd=cost,
-                ))
+                results.append(
+                    PageResult(
+                        pdf_name=pdf_rel,
+                        page_num=page_num,
+                        description=description,
+                        model_name=model_name,
+                        provider=model["provider"],
+                        markdown=md,
+                        input_tokens=in_tok,
+                        output_tokens=out_tok,
+                        elapsed_seconds=elapsed,
+                        cost_usd=cost,
+                    )
+                )
                 print(f"{elapsed:.1f}s | {in_tok:,} in / {out_tok:,} out | {len(md)} chars")
 
             except Exception as e:
                 print(f"ERROR: {e}")
-                results.append(PageResult(
-                    pdf_name=pdf_rel,
-                    page_num=page_num,
-                    description=description,
-                    model_name=model_name,
-                    provider=model["provider"],
-                    markdown="",
-                    input_tokens=0,
-                    output_tokens=0,
-                    elapsed_seconds=0,
-                    cost_usd=None,
-                    error=str(e),
-                ))
+                results.append(
+                    PageResult(
+                        pdf_name=pdf_rel,
+                        page_num=page_num,
+                        description=description,
+                        model_name=model_name,
+                        provider=model["provider"],
+                        markdown="",
+                        input_tokens=0,
+                        output_tokens=0,
+                        elapsed_seconds=0,
+                        cost_usd=None,
+                        error=str(e),
+                    )
+                )
 
     # Write JSON results
     json_path.write_text(json.dumps([asdict(r) for r in results], indent=2, ensure_ascii=False))

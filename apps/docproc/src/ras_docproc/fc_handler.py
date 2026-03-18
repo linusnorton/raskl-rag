@@ -10,8 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from urllib.parse import unquote_plus
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
@@ -26,12 +25,14 @@ def _oss_event_to_s3_event(oss_event: dict) -> dict:
         oss = event.get("oss", {})
         bucket = oss.get("bucket", {})
         obj = oss.get("object", {})
-        records.append({
-            "s3": {
-                "bucket": {"name": bucket.get("name", "")},
-                "object": {"key": obj.get("key", "")},
+        records.append(
+            {
+                "s3": {
+                    "bucket": {"name": bucket.get("name", "")},
+                    "object": {"key": obj.get("key", "")},
+                }
             }
-        })
+        )
     return {"Records": records}
 
 
@@ -65,6 +66,7 @@ class FCHandler(BaseHTTPRequestHandler):
 
             # Patch boto3 S3 client to use OSS
             import ras_docproc.lambda_handler as handler
+
             handler.s3 = _setup_oss_boto3()
 
             # Convert OSS event to S3 format and delegate

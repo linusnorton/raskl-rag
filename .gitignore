@@ -1,28 +1,29 @@
-docs/
-data/
-reports/
+# Python
 *.pyc
+*.egg-info/
 __pycache__/
 .venv/
-*.egg-info/
-dist/
-build/
 .mypy_cache/
-.ruff_cache/
 .pytest_cache/
+.ruff_cache/
+build/
+dist/
+
+# Env / credentials
+.env
+
+# Data / docs
+data/
+docs/
 models/
 
 # Terraform
+.terraform/
 *.tfstate
 *.tfstate.*
-.terraform/
 infra/.build/
 infra/terraform.tfvars
+infra-alibaba/packages/
 
-# Local env credentials
-.env
-
-# Alibaba Cloud Terraform
-infra-alibaba/.terraform/
-infra-alibaba/terraform.tfstate*
+# Reports (build artifacts)
 reports/
