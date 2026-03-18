@@ -40,7 +40,7 @@ resource "aws_iam_role_policy" "lambda_bedrock" {
         ]
         Resource = [
           "arn:aws:bedrock:*::foundation-model/*",
-          "arn:aws:bedrock:${local.region}:${local.account_id}:inference-profile/eu.*",
+          "arn:aws:bedrock:*:${local.account_id}:inference-profile/eu.*",
         ]
       },
       {
