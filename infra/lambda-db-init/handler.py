@@ -80,6 +80,15 @@ def lambda_handler(event, context):
         ON figures USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 200);
     CREATE INDEX IF NOT EXISTS idx_figures_caption_fts
         ON figures USING gin(to_tsvector('english', caption));
+
+    CREATE TABLE IF NOT EXISTS pipeline_status (
+        filename    TEXT PRIMARY KEY,
+        stage       TEXT NOT NULL,
+        error       TEXT,
+        updated_at  TIMESTAMPTZ DEFAULT now()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_pipeline_status_stage ON pipeline_status(stage);
     """
 
     conn = psycopg2.connect(dsn)

@@ -22,6 +22,9 @@ resource "aws_lambda_function" "docproc" {
       DOCPROC_BEDROCK_REGION      = var.aws_region
       DOCPROC_BEDROCK_OCR_MODEL_ID = "qwen.qwen3-vl-235b-a22b"
 
+      # Database (pipeline status tracking)
+      DOCPROC_DATABASE_DSN = local.neon_dsn
+
       # uv cache (Lambda filesystem is read-only except /tmp)
       UV_CACHE_DIR = "/tmp/uv-cache"
     }

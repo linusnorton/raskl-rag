@@ -158,6 +158,48 @@ def delete_document(conn: psycopg.Connection, doc_id: str) -> bool:
     return deleted
 
 
+def get_all_pipeline_statuses(conn: psycopg.Connection) -> list[dict[str, Any]]:
+    """Get all pipeline statuses from the database."""
+    with conn.cursor() as cur:
+        cur.execute("SELECT filename, stage, error, updated_at FROM pipeline_status ORDER BY updated_at DESC")
+        cols = [desc[0] for desc in cur.description]
+        rows = []
+        for row in cur.fetchall():
+            d = dict(zip(cols, row))
+            # Convert datetime to ISO string for template compatibility
+            if d.get("updated_at") and hasattr(d["updated_at"], "isoformat"):
+                d["updated_at"] = d["updated_at"].isoformat()
+            rows.append(d)
+        return rows
+
+
+def get_pipeline_stage_counts(conn: psycopg.Connection) -> dict[str, int]:
+    """Get pipeline status counts grouped by stage."""
+    with conn.cursor() as cur:
+        cur.execute("SELECT stage, count(*) FROM pipeline_status GROUP BY stage")
+        return {row[0]: row[1] for row in cur.fetchall()}
+
+
+def upsert_pipeline_status(conn: psycopg.Connection, filename: str, stage: str, error: str | None = None) -> None:
+    """Insert or update a pipeline status record."""
+    with conn.cursor() as cur:
+        cur.execute(
+            """INSERT INTO pipeline_status (filename, stage, error, updated_at)
+               VALUES (%s, %s, %s, now())
+               ON CONFLICT (filename)
+               DO UPDATE SET stage = EXCLUDED.stage, error = EXCLUDED.error, updated_at = now()""",
+            (filename, stage, error),
+        )
+    conn.commit()
+
+
+def delete_pipeline_status(conn: psycopg.Connection, filename: str) -> None:
+    """Delete a pipeline status record."""
+    with conn.cursor() as cur:
+        cur.execute("DELETE FROM pipeline_status WHERE filename = %s", (filename,))
+    conn.commit()
+
+
 def search_documents(conn: psycopg.Connection, query: str) -> list[dict[str, Any]]:
     """Search documents by filename or title."""
     with conn.cursor() as cur:

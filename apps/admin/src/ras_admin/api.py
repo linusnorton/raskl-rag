@@ -88,22 +88,14 @@ async def dashboard(request: Request):
     conn = db.get_connection(config)
     try:
         stats = db.get_dashboard_stats(conn)
+
+        # Pipeline status counts from DB
+        pipeline_stages = ["uploaded", "processing", "processed", "indexing", "done", "error"]
+        stage_counts = {stage: 0 for stage in pipeline_stages}
+        stage_counts.update(db.get_pipeline_stage_counts(conn))
+        statuses = db.get_all_pipeline_statuses(conn)
     finally:
         conn.close()
-
-    # Pipeline status counts (fixed order, all stages shown)
-    pipeline_stages = ["uploaded", "processing", "processed", "indexing", "done", "error"]
-    stage_counts = {stage: 0 for stage in pipeline_stages}
-    statuses = []
-    if config.s3_bucket:
-        s3_client = s3.get_client()
-        statuses = s3.get_all_statuses(s3_client, config.s3_bucket)
-        for st in statuses:
-            stage = st.get("stage", "unknown")
-            if stage in stage_counts:
-                stage_counts[stage] += 1
-            else:
-                stage_counts[stage] = 1
 
     return templates.TemplateResponse(
         "dashboard.html",
@@ -126,15 +118,16 @@ async def pipeline_status_page(request: Request, stage: str = ""):
     if user is None:
         return RedirectResponse(url="/login", status_code=303)
 
-    statuses = []
-    if config.s3_bucket:
-        s3_client = s3.get_client()
-        all_statuses = s3.get_all_statuses(s3_client, config.s3_bucket)
-        if stage:
-            statuses = [s for s in all_statuses if s.get("stage") == stage]
-        else:
-            statuses = all_statuses
-        statuses.sort(key=lambda s: s.get("updated_at", ""), reverse=True)
+    conn = db.get_connection(config)
+    try:
+        all_statuses = db.get_all_pipeline_statuses(conn)
+    finally:
+        conn.close()
+
+    if stage:
+        statuses = [s for s in all_statuses if s.get("stage") == stage]
+    else:
+        statuses = all_statuses
 
     return templates.TemplateResponse(
         "pipeline.html",
@@ -354,9 +347,15 @@ async def reprocess_document(request: Request, doc_id: str):
     if doc is None:
         return JSONResponse({"error": "Document not found"}, status_code=404)
 
+    # Update pipeline status in DB
+    conn = db.get_connection(config)
+    try:
+        db.upsert_pipeline_status(conn, doc["source_filename"], "uploaded")
+    finally:
+        conn.close()
+
     s3_client = s3.get_client()
     s3_key = f"uploads/{doc['source_filename']}"
-    s3.write_status(s3_client, config.s3_bucket, doc["source_filename"], "uploaded")
     s3.trigger_reprocess(s3_client, config.s3_bucket, s3_key)
     return JSONResponse({"ok": True, "message": f"Reprocessing triggered for {doc['source_filename']}"})
 
@@ -396,8 +395,9 @@ async def delete_document(request: Request, doc_id: str):
             s3_client = s3.get_client()
             s3.delete_doc_from_s3(s3_client, config.s3_bucket, doc_id, doc["source_filename"])
 
-        # Delete from DB (CASCADE)
+        # Delete from DB (CASCADE) + pipeline status
         db.delete_document(conn, doc_id)
+        db.delete_pipeline_status(conn, doc["source_filename"])
     finally:
         conn.close()
 
@@ -573,7 +573,14 @@ async def upload_presign(request: Request):
 
     s3_client = s3.get_client()
     url = s3.presign_upload(s3_client, config.s3_bucket, filename)
-    s3.write_status(s3_client, config.s3_bucket, filename, "uploaded")
+
+    # Track upload status in DB
+    conn = db.get_connection(config)
+    try:
+        db.upsert_pipeline_status(conn, os.path.basename(filename), "uploaded")
+    finally:
+        conn.close()
+
     return JSONResponse({"upload_url": url, "s3_key": f"uploads/{os.path.basename(filename)}"})
 
 
@@ -582,11 +589,17 @@ async def upload_status(request: Request):
     user = _user_or_redirect(request)
     if user is None:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    if not config.s3_bucket:
-        return JSONResponse([], status_code=200)
+    conn = db.get_connection(config)
+    try:
+        statuses = db.get_all_pipeline_statuses(conn)
+    finally:
+        conn.close()
 
-    s3_client = s3.get_client()
-    statuses = s3.get_all_statuses(s3_client, config.s3_bucket)
+    # Serialize datetimes for JSON
+    for st in statuses:
+        if st.get("updated_at") and hasattr(st["updated_at"], "isoformat"):
+            st["updated_at"] = st["updated_at"].isoformat()
+
     return JSONResponse(statuses)
 
 
@@ -599,7 +612,19 @@ async def reprocess_all_docs(request: Request):
         return JSONResponse({"error": "S3 not configured"}, status_code=400)
 
     s3_client = s3.get_client()
-    filenames = s3.reprocess_all(s3_client, config.s3_bucket)
+    pdf_keys = s3.list_uploaded_pdfs(s3_client, config.s3_bucket)
+
+    conn = db.get_connection(config)
+    filenames = []
+    try:
+        for key in pdf_keys:
+            filename = key.rsplit("/", 1)[-1]
+            db.upsert_pipeline_status(conn, filename, "uploaded")
+            filenames.append(filename)
+            s3.trigger_reprocess(s3_client, config.s3_bucket, key)
+    finally:
+        conn.close()
+
     return JSONResponse({"filenames": filenames, "message": f"Reprocessing {len(filenames)} PDFs"})
 
 
@@ -655,7 +680,7 @@ async def bulk_reprocess(request: Request):
             doc = db.get_document(conn, doc_id)
             if doc:
                 s3_key = f"uploads/{doc['source_filename']}"
-                s3.write_status(s3_client, config.s3_bucket, doc["source_filename"], "uploaded")
+                db.upsert_pipeline_status(conn, doc["source_filename"], "uploaded")
                 s3.trigger_reprocess(s3_client, config.s3_bucket, s3_key)
                 triggered += 1
     finally:

@@ -12,15 +12,47 @@ from pathlib import Path
 from urllib.parse import unquote_plus
 
 import boto3
+import psycopg
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 s3 = boto3.client("s3")
 
+_db_conn = None
+
+
+def _get_db_conn():
+    """Get or create a database connection for pipeline status tracking."""
+    global _db_conn
+    dsn = os.environ.get("CHUNKER_DATABASE_DSN")
+    if not dsn:
+        return None
+    if _db_conn is None or _db_conn.closed:
+        _db_conn = psycopg.connect(dsn, autocommit=True)
+    return _db_conn
+
 
 def _write_status(bucket, filename, stage, error=None):
-    """Write pipeline status for a file to S3."""
+    """Write pipeline status to the database (with S3 fallback)."""
+    conn = _get_db_conn()
+    if conn:
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO pipeline_status (filename, stage, error, updated_at)
+                       VALUES (%s, %s, %s, now())
+                       ON CONFLICT (filename)
+                       DO UPDATE SET stage = EXCLUDED.stage, error = EXCLUDED.error, updated_at = now()""",
+                    (filename, stage, error),
+                )
+            return
+        except Exception:
+            logger.warning("DB status write failed, falling back to S3", exc_info=True)
+            global _db_conn
+            _db_conn = None
+
+    # Fallback to S3
     status = {
         "filename": filename,
         "stage": stage,
