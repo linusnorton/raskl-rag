@@ -6,7 +6,7 @@ from rich.console import Console
 
 from .chunker import chunk_blocks
 from .config import ChunkerConfig
-from .db import get_connection, upsert_chunks, upsert_document, upsert_figures
+from .db import get_connection, get_existing_chunks, get_existing_figures, upsert_chunks, upsert_document, upsert_figures
 from .embedder import embed_chunks
 from .loader import DocprocOutput, find_doc_dir
 from .restitch import restitch
@@ -118,21 +118,66 @@ def run_index(doc_id: str, config: ChunkerConfig, *, s3_prefix: str = "", versio
     if s3_prefix:
         output.meta.s3_prefix = s3_prefix
 
-    # Embed
+    # Fetch existing chunks/figures to reuse embeddings for unchanged text
+    existing_chunks: dict[str, tuple[str, list[float]]] = {}
+    existing_figures: dict[str, tuple[str, list[float] | None]] = {}
+    try:
+        with get_connection(config) as conn:
+            existing_chunks = get_existing_chunks(conn, doc_id)
+            existing_figures = get_existing_figures(conn, doc_id)
+    except Exception:
+        pass  # Fresh index, no existing data
+
+    # Split chunks into changed (need embedding) and unchanged (reuse embedding)
+    chunks_to_embed: list[tuple[int, Chunk]] = []  # (index, chunk)
+    embeddings: list[list[float] | None] = [None] * len(chunks)
+
+    for i, chunk in enumerate(chunks):
+        old = existing_chunks.get(chunk.chunk_id)
+        if old and old[0] == chunk.text:
+            embeddings[i] = old[1]
+        else:
+            chunks_to_embed.append((i, chunk))
+
+    reused = len(chunks) - len(chunks_to_embed)
+
+    # Embed only new/changed chunks
     embed_model = (
         config.model_studio_embed_model_id if config.llm_provider == "model_studio" else config.bedrock_embed_model_id
     )
-    console.print(f"Embedding {len(chunks)} chunks via {config.llm_provider} ({embed_model}) ...")
-    embeddings = embed_chunks(chunks, config)
-    console.print(f"[green]Embedded {len(embeddings)} chunks[/green]")
+    if chunks_to_embed:
+        console.print(
+            f"Embedding {len(chunks_to_embed)} chunks via {config.llm_provider} ({embed_model}) "
+            f"({reused} unchanged, reusing existing embeddings) ..."
+        )
+        new_embeddings = embed_chunks([c for _, c in chunks_to_embed], config)
+        for (i, _), emb in zip(chunks_to_embed, new_embeddings):
+            embeddings[i] = emb
+    else:
+        console.print(f"[green]All {len(chunks)} chunks unchanged — reusing existing embeddings[/green]")
 
-    # Build and embed figures
+    # Build and embed figures (same optimization)
     figures = _build_figures(output)
     fig_embeddings: list[list[float] | None] = []
     if figures:
-        console.print(f"Embedding {len(figures)} figures ...")
-        fig_embeddings = _index_figures(figures, config)
-        console.print(f"[green]Embedded {len(figures)} figures[/green]")
+        figs_to_embed: list[tuple[int, FigureMeta]] = []
+        fig_embeddings = [None] * len(figures)
+
+        for i, fig in enumerate(figures):
+            old = existing_figures.get(fig.figure_id)
+            if old and old[0] == fig.caption:
+                fig_embeddings[i] = old[1]
+            else:
+                figs_to_embed.append((i, fig))
+
+        fig_reused = len(figures) - len(figs_to_embed)
+        if figs_to_embed:
+            console.print(f"Embedding {len(figs_to_embed)} figures ({fig_reused} unchanged) ...")
+            new_fig_embs = _index_figures([f for _, f in figs_to_embed], config)
+            for (i, _), emb in zip(figs_to_embed, new_fig_embs):
+                fig_embeddings[i] = emb
+        elif figures:
+            console.print(f"[green]All {len(figures)} figures unchanged — reusing existing embeddings[/green]")
 
     # Index
     console.print("Writing to database ...")

@@ -161,6 +161,26 @@ def upsert_document(conn: psycopg.Connection, meta: DocMeta) -> None:
     )
 
 
+def get_existing_chunks(conn: psycopg.Connection, doc_id: str) -> dict[str, tuple[str, list[float]]]:
+    """Fetch existing chunk_id → (text, embedding) for a document."""
+    result: dict[str, tuple[str, list[float]]] = {}
+    with conn.cursor() as cur:
+        cur.execute("SELECT chunk_id, text, embedding FROM chunks WHERE doc_id = %s", (doc_id,))
+        for row in cur.fetchall():
+            result[row[0]] = (row[1], list(row[2]))
+    return result
+
+
+def get_existing_figures(conn: psycopg.Connection, doc_id: str) -> dict[str, tuple[str, list[float] | None]]:
+    """Fetch existing figure_id → (caption, embedding) for a document."""
+    result: dict[str, tuple[str, list[float] | None]] = {}
+    with conn.cursor() as cur:
+        cur.execute("SELECT figure_id, caption, embedding FROM figures WHERE doc_id = %s", (doc_id,))
+        for row in cur.fetchall():
+            result[row[0]] = (row[1], list(row[2]) if row[2] is not None else None)
+    return result
+
+
 def upsert_chunks(
     conn: psycopg.Connection,
     chunks: list[Chunk],

@@ -199,6 +199,23 @@ dramatically larger context window than v3.
 engine's retriever. Both must use the same Bedrock model ID. Mixing models produces silently poor
 retrieval because vectors from different models are not comparable.
 
+### D8a — Incremental embedding (reuse unchanged)
+
+**What we chose:** On reindex, the pipeline fetches existing chunk texts and embeddings from the
+database before embedding. Chunks whose text is identical to the stored version reuse their
+existing embedding vector; only new or text-changed chunks are sent to the embedding model. The
+same optimization applies to figure captions.
+
+**Why:** Cohere Embed v4 on Bedrock has a daily token quota. Bulk uploads that trigger reindexing
+(e.g. after transient DB/throttle failures) were re-embedding all chunks on every retry, burning
+through the quota on identical content. With ~200 chunks per doc and 5+ retries across multiple
+passes, a single document could consume 1000+ embedding calls for unchanged text.
+
+**How it works:** `get_existing_chunks()` in `db.py` fetches `(chunk_id, text, embedding)` for
+the doc. In `pipeline.py`, each new chunk is compared by `chunk_id` + `text` — matches reuse the
+old embedding, misses go to the embed provider. For a no-change reindex, zero embedding API calls
+are made.
+
 ### D9 — Figure indexing
 
 **What we chose:** Figures extracted by docproc (`figures.jsonl`) are loaded, embedded by caption
