@@ -217,14 +217,19 @@ narrative flow while keeping factual claims grounded in the retrieved context.
 ### D9 — Lambda Function URL with response streaming
 
 **What we chose:** The RAG API Lambda is invoked via a Lambda Function URL with
-`RESPONSE_STREAM` invoke mode, bypassing API Gateway for chat requests. Open WebUI points
-directly at the Function URL. API Gateway remains for non-chat endpoints (images, health).
+`RESPONSE_STREAM` invoke mode, fronted by CloudFront with OAC (Origin Access Control). This
+bypasses API Gateway for chat requests. Open WebUI points at the CloudFront distribution.
+API Gateway remains for non-chat endpoints (images, health).
 
 **Why:** API Gateway HTTP API has a hard 30-second timeout that cannot be increased. The agentic
 tool-calling loop (initial retrieval + multiple Bedrock LLM calls + tool executions) routinely
 takes 25-60 seconds for multi-part queries, causing 504 Gateway Timeout errors. Lambda Function
 URLs support response streaming with up to 15 minutes timeout, eliminating this bottleneck and
 enabling real SSE streaming to the client.
+
+CloudFront is needed because the AWS account has `BlockPublicPolicy` enabled, preventing
+`NONE`-auth Lambda Function URLs. CloudFront OAC signs requests with IAM SigV4 on behalf
+of callers, providing public HTTP access to the IAM-auth Function URL.
 
 **What we considered:** An earlier approach forced non-streaming `application/json` on Lambda to
 work around API Gateway's inability to relay SSE. This worked but imposed the 30s timeout limit
