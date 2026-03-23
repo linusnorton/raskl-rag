@@ -226,6 +226,11 @@ resource "aws_iam_role_policy" "github_actions" {
       },
       {
         Effect   = "Allow"
+        Action   = ["cloudfront:*"]
+        Resource = "*"
+      },
+      {
+        Effect   = "Allow"
         Action   = ["iam:CreateServiceLinkedRole"]
         Resource = "arn:aws:iam::${local.account_id}:role/aws-service-role/apprunner.amazonaws.com/*"
       },
