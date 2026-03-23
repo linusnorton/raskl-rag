@@ -357,6 +357,29 @@ without depending on year/language appearing in the text.
 **No DB changes needed:** The `year`, `language`, and `publication` columns already exist in the
 `documents` table, populated by the docproc pipeline.
 
+### D16 — Corpus introspection via `browse_corpus` tool
+
+**What we chose:** A dedicated `browse_corpus` tool that queries the `documents` table directly
+with structured filters, supporting three actions:
+
+| Action | Description |
+|--------|-------------|
+| `list` | List documents matching filters (title, author, year, volume, issue, pages, type) |
+| `count` | Count documents grouped by a field (publication, year, document_type, volume, author) |
+| `overview` | Corpus-wide statistics (total docs, year range, type breakdown) |
+
+Filters: `publication`, `volume`, `issue`, `year_from`, `year_to`, `document_type`, `author`.
+Publication matching uses ILIKE with alias normalization (e.g. "JMBRAS" matches all variants of
+"Journal of the Malaysian/Malayan Branch of the Royal Asiatic Society"). Author matching is
+case-insensitive partial match.
+
+**Why:** Catalog/inventory questions ("List the contents of JMBRAS Volume 87 Part 1", "How many
+journals do you have?") cannot be answered by semantic search — vector similarity returns random
+passages rather than structured listings. These questions require direct metadata queries.
+
+**No arbitrary SQL:** The tool accepts structured parameters and maps them to predefined
+parameterized SQL queries. The LLM never writes SQL.
+
 ## Configuration
 
 Key environment variables (prefix `CHAT_`):

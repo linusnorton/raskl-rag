@@ -52,6 +52,8 @@ class DocMeta(BaseModel):
     issn: str | None = None
     series: str | None = None
     description: str | None = None
+    volume: str | None = None
+    issue: str | None = None
     page_offset: int = 0
     page_range_label: str | None = None
     sha256_pdf: str

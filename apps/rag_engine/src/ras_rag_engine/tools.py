@@ -92,6 +92,72 @@ _FIND_IMAGES_TOOL = {
     },
 }
 
+_BROWSE_CORPUS_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "browse_corpus",
+        "description": (
+            "Browse and explore the document collection metadata. Use this when the user asks "
+            "about what documents are available, wants to list contents of a specific volume or "
+            "issue, count documents by publication or year, or get an overview of the corpus. "
+            "Do NOT use this for content-based questions — use search_documents for that."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": ["list", "count", "overview"],
+                    "description": (
+                        "Action to perform: "
+                        "'list' — list documents matching filters (returns title, author, year, volume, issue, pages, type). "
+                        "'count' — count documents grouped by a field (publication, year, document_type, volume, author). "
+                        "'overview' — summary statistics of the entire corpus."
+                    ),
+                },
+                "publication": {
+                    "type": "string",
+                    "description": "Filter by publication name (e.g. 'JMBRAS', 'JSBRAS'). Matches loosely.",
+                },
+                "volume": {
+                    "type": "string",
+                    "description": "Filter by volume number (e.g. '87').",
+                },
+                "issue": {
+                    "type": "string",
+                    "description": "Filter by issue/part number (e.g. '1', '2').",
+                },
+                "year_from": {
+                    "type": "integer",
+                    "description": "Lower bound (inclusive) for publication year.",
+                },
+                "year_to": {
+                    "type": "integer",
+                    "description": "Upper bound (inclusive) for publication year.",
+                },
+                "document_type": {
+                    "type": "string",
+                    "description": (
+                        "Filter by document type: journal_article, front_matter, obituary, editors_note, "
+                        "annual_report, agm_minutes, biographical_notes, secondary_source, "
+                        "primary_source, mbras_monograph, mbras_reprint, index, illustration."
+                    ),
+                },
+                "author": {
+                    "type": "string",
+                    "description": "Filter by author name (partial match, e.g. 'Swettenham').",
+                },
+                "group_by": {
+                    "type": "string",
+                    "enum": ["publication", "year", "document_type", "volume", "author"],
+                    "description": "For 'count' action: field to group results by. Defaults to 'publication'.",
+                },
+            },
+            "required": ["action"],
+        },
+    },
+}
+
 _WEB_SEARCH_TOOL = {
     "type": "function",
     "function": {
@@ -114,12 +180,12 @@ _WEB_SEARCH_TOOL = {
 }
 
 # Keep backward-compatible module-level constant (includes all tools)
-TOOL_DEFINITIONS = [_SEARCH_TOOL, _FIND_IMAGES_TOOL, _WEB_SEARCH_TOOL]
+TOOL_DEFINITIONS = [_SEARCH_TOOL, _FIND_IMAGES_TOOL, _BROWSE_CORPUS_TOOL, _WEB_SEARCH_TOOL]
 
 
 def get_tool_definitions(config: RAGConfig) -> list[dict]:
     """Return tool definitions based on config (web_search conditional)."""
-    tools = [_SEARCH_TOOL, _FIND_IMAGES_TOOL]
+    tools = [_SEARCH_TOOL, _FIND_IMAGES_TOOL, _BROWSE_CORPUS_TOOL]
     if config.web_search_enabled:
         tools.append(_WEB_SEARCH_TOOL)
     return tools
@@ -244,6 +310,155 @@ def _execute_find_images(args: dict, config: RAGConfig) -> tuple[str, list[Retri
     return "\n\n".join(parts), []
 
 
+# Publication name aliases for ILIKE matching (the publication field is inconsistent)
+_PUBLICATION_PATTERNS = {
+    "JMBRAS": "%Royal Asiatic%",
+    "JMRAS": "%Royal Asiatic%",
+    "JSBRAS": "%Straits Branch%",
+    "MBRAS": "%Royal Asiatic%",
+}
+
+
+def _resolve_publication_pattern(value: str | None) -> str | None:
+    """Convert a publication filter to an ILIKE pattern."""
+    if not value:
+        return None
+    return _PUBLICATION_PATTERNS.get(value.upper(), f"%{value}%")
+
+
+def _build_where_clause(args: dict) -> tuple[str, dict]:
+    """Build a WHERE clause and params from browse_corpus filter args."""
+    conditions = []
+    params: dict = {}
+    pub_pattern = _resolve_publication_pattern(args.get("publication"))
+    if pub_pattern:
+        conditions.append("publication ILIKE %(pub)s")
+        params["pub"] = pub_pattern
+    if args.get("volume"):
+        conditions.append("volume = %(volume)s")
+        params["volume"] = args["volume"]
+    if args.get("issue"):
+        conditions.append("issue = %(issue)s")
+        params["issue"] = args["issue"]
+    if args.get("year_from"):
+        conditions.append("year >= %(year_from)s")
+        params["year_from"] = args["year_from"]
+    if args.get("year_to"):
+        conditions.append("year <= %(year_to)s")
+        params["year_to"] = args["year_to"]
+    if args.get("document_type"):
+        conditions.append("document_type = %(doc_type)s")
+        params["doc_type"] = args["document_type"]
+    if args.get("author"):
+        conditions.append("author ILIKE %(author)s")
+        params["author"] = f"%{args['author']}%"
+    where = " AND ".join(conditions) if conditions else "TRUE"
+    return where, params
+
+
+def _execute_browse_corpus(args: dict, config: RAGConfig) -> tuple[str, list[RetrievedChunk]]:
+    """Execute a corpus browse/introspection query."""
+    import psycopg
+
+    action = args.get("action", "list")
+    where, params = _build_where_clause(args)
+
+    with psycopg.connect(config.dsn) as conn:
+        if action == "overview":
+            row = conn.execute(
+                f"""
+                SELECT COUNT(*) AS total,
+                       COUNT(DISTINCT publication) AS pubs,
+                       MIN(year) AS earliest,
+                       MAX(year) AS latest,
+                       COUNT(DISTINCT volume) FILTER (WHERE publication ILIKE '%%Royal Asiatic%%') AS jmbras_vols,
+                       COUNT(*) FILTER (WHERE publication ILIKE '%%Royal Asiatic%%') AS jmbras_docs,
+                       COUNT(*) FILTER (WHERE publication ILIKE '%%Straits Branch%%') AS jsbras_docs
+                FROM documents WHERE {where}
+                """,
+                params,
+            ).fetchone()
+            total, pubs, earliest, latest, jmbras_vols, jmbras_docs, jsbras_docs = row
+            lines = [
+                f"Corpus overview:",
+                f"- Total documents: {total}",
+                f"- Distinct publications: {pubs}",
+                f"- Year range: {earliest or '?'}–{latest or '?'}",
+                f"- JMBRAS/JMRAS/JSBRAS journals: {jmbras_docs + jsbras_docs} documents across {jmbras_vols} volumes",
+            ]
+            # Add document type breakdown
+            rows = conn.execute(
+                f"""
+                SELECT document_type, COUNT(*) AS cnt
+                FROM documents WHERE {where}
+                GROUP BY document_type ORDER BY cnt DESC
+                """,
+                params,
+            ).fetchall()
+            if rows:
+                lines.append("- By type:")
+                for dtype, cnt in rows:
+                    label = _TYPE_LABELS.get(dtype, f" [{dtype}]").strip(" []") if dtype else "Unknown"
+                    lines.append(f"  {label}: {cnt}")
+            return "\n".join(lines), []
+
+        elif action == "count":
+            group_by = args.get("group_by", "publication")
+            valid_groups = {"publication", "year", "document_type", "volume", "author"}
+            if group_by not in valid_groups:
+                group_by = "publication"
+            order = "cnt DESC" if group_by != "year" else f"{group_by}"
+            rows = conn.execute(
+                f"""
+                SELECT {group_by}, COUNT(*) AS cnt
+                FROM documents WHERE {where}
+                GROUP BY {group_by} ORDER BY {order}
+                LIMIT 100
+                """,
+                params,
+            ).fetchall()
+            if not rows:
+                return "No documents found matching those filters.", []
+            lines = [f"Document count by {group_by}:"]
+            for val, cnt in rows:
+                display = val or "Unknown"
+                lines.append(f"- {display}: {cnt}")
+            return "\n".join(lines), []
+
+        else:  # action == "list"
+            rows = conn.execute(
+                f"""
+                SELECT title, author, year, volume, issue, document_type, page_range_label, source_filename
+                FROM documents WHERE {where}
+                ORDER BY year NULLS LAST, volume NULLS LAST, issue NULLS LAST, title NULLS LAST
+                LIMIT 100
+                """,
+                params,
+            ).fetchall()
+            if not rows:
+                return "No documents found matching those filters.", []
+            lines = [f"Found {len(rows)} document(s):"]
+            for i, (title, author, year, volume, issue, doc_type, pages, filename) in enumerate(rows, 1):
+                display_title = title or filename
+                type_label = _TYPE_LABELS.get(doc_type, "").strip(" []")
+                parts = []
+                if author:
+                    parts.append(author)
+                if year:
+                    parts.append(f"({year})")
+                parts.append(f'"{display_title}"')
+                if volume and issue:
+                    parts.append(f"Vol.{volume} Part {issue}")
+                elif volume:
+                    parts.append(f"Vol.{volume}")
+                if pages:
+                    parts.append(f"pp.{pages}")
+                if type_label:
+                    parts.append(f"[{type_label}]")
+                lines.append(f"{i}. {', '.join(parts)}")
+            return "\n".join(lines), []
+
+
 def _execute_web_search(args: dict) -> tuple[str, list[RetrievedChunk]]:
     """Execute a web search and return formatted results."""
     query = args["query"]
@@ -269,6 +484,8 @@ def execute_tool_call(name: str, args_json: str, config: RAGConfig, start_index:
         return _execute_search_documents(args, config, start_index=start_index)
     elif name == "find_images":
         return _execute_find_images(args, config)
+    elif name == "browse_corpus":
+        return _execute_browse_corpus(args, config)
     elif name == "web_search":
         return _execute_web_search(args)
     else:

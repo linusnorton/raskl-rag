@@ -81,6 +81,11 @@ ALTER TABLE documents ADD COLUMN IF NOT EXISTS document_type TEXT;
 -- Migration: add publication to existing databases
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS publication TEXT;
 
+-- Migration: add volume/issue/page_range_label columns
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS volume TEXT;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS issue TEXT;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS page_range_label TEXT;
+
 -- Migration: add enriched metadata columns
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS editor TEXT;
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS abstract TEXT;
@@ -132,11 +137,12 @@ def upsert_document(conn: psycopg.Connection, meta: DocMeta) -> None:
         """
         INSERT INTO documents (doc_id, source_filename, title, author, editor, year, publication,
                                document_type, abstract, keywords, language, isbn, issn, series,
-                               description, page_offset, sha256_pdf, s3_prefix)
+                               description, volume, issue, page_range_label, page_offset,
+                               sha256_pdf, s3_prefix)
         VALUES (%(doc_id)s, %(source_filename)s, %(title)s, %(author)s, %(editor)s, %(year)s,
                 %(publication)s, %(document_type)s, %(abstract)s, %(keywords)s, %(language)s,
-                %(isbn)s, %(issn)s, %(series)s, %(description)s, %(page_offset)s, %(sha256_pdf)s,
-                %(s3_prefix)s)
+                %(isbn)s, %(issn)s, %(series)s, %(description)s, %(volume)s, %(issue)s,
+                %(page_range_label)s, %(page_offset)s, %(sha256_pdf)s, %(s3_prefix)s)
         ON CONFLICT (doc_id) DO UPDATE SET
             source_filename = EXCLUDED.source_filename,
             title = EXCLUDED.title,
@@ -152,6 +158,9 @@ def upsert_document(conn: psycopg.Connection, meta: DocMeta) -> None:
             issn = EXCLUDED.issn,
             series = EXCLUDED.series,
             description = EXCLUDED.description,
+            volume = EXCLUDED.volume,
+            issue = EXCLUDED.issue,
+            page_range_label = EXCLUDED.page_range_label,
             page_offset = EXCLUDED.page_offset,
             sha256_pdf = EXCLUDED.sha256_pdf,
             s3_prefix = EXCLUDED.s3_prefix,

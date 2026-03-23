@@ -132,6 +132,8 @@ class DocprocOutput:
             issn=raw.get("issn"),
             series=raw.get("series"),
             description=raw.get("description"),
+            volume=raw.get("volume"),
+            issue=raw.get("issue"),
             page_offset=raw.get("page_offset", 0),
             page_range_label=raw.get("page_range_label"),
             sha256_pdf=raw["sha256_pdf"],

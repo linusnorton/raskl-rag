@@ -283,6 +283,16 @@ unfiltered. Filtering is a chunker concern because it depends on metadata (`page
 Documents where the title heading isn't found on the first page still get page-level filtering
 but no title-based trimming.
 
+### D13 — Volume, issue, and page range in documents table
+
+**What we chose:** Added `volume`, `issue`, and `page_range_label` columns to the `documents`
+table, populated from docproc's `DocumentRecord` fields during indexing.
+
+**Why:** These fields were already extracted by docproc but discarded during indexing. The RAG
+engine's `browse_corpus` tool needs them to answer catalog questions like "list the contents of
+JMBRAS Volume 87 Part 1". Without them, volume-level queries would require fragile regex parsing
+of `source_filename` or `publication` at query time.
+
 ## Database schema
 
 ```sql
@@ -292,6 +302,9 @@ CREATE TABLE documents (
     title           TEXT,
     author          TEXT,
     year            INTEGER,
+    volume          TEXT,           -- journal volume number
+    issue           TEXT,           -- journal issue/part number
+    page_range_label TEXT,          -- page range string (e.g. "1-22")
     page_offset     INTEGER NOT NULL DEFAULT 0,  -- audit only, already applied
     sha256_pdf      TEXT NOT NULL,
     s3_prefix       TEXT NOT NULL DEFAULT '', -- S3 key prefix for assets (Lambda mode)

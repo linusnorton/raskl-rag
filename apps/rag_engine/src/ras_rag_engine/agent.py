@@ -63,6 +63,10 @@ Guidelines:
 - When the user specifies a language (e.g. "Malay-language sources"), use the `language` parameter
   with the ISO code: en (English), ms (Malay), zh (Chinese), ar (Arabic/Jawi).
 - When the user asks for images from a specific period, use `year_from`/`year_to` on `find_images` too.
+- When the user asks about what documents are in the collection, wants to list contents of a specific
+  volume or issue, count documents by publication or year, find works by a specific author, or get
+  an overview of the corpus, use the `browse_corpus` tool instead of `search_documents`.
+  Use action 'list' to show contents, 'count' to tally by field, and 'overview' for corpus-wide statistics.
 - Do not invent facts. Only state what the sources say.
 - When context contains images (![caption](url) with italic caption below), include relevant ones in your response preserving both the image markdown and the italic caption line. Skip images with generic captions like "Figure on p.X".\
 """
