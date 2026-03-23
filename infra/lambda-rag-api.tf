@@ -99,7 +99,7 @@ resource "aws_cloudfront_distribution" "rag_api" {
   is_ipv6_enabled = true
 
   origin {
-    domain_name              = replace(replace(aws_lambda_function_url.rag_api.function_url, "https://", ""), "/", "")
+    domain_name              = trimsuffix(trimprefix(aws_lambda_function_url.rag_api.function_url, "https://"), "/")
     origin_id                = "rag-api-lambda"
     origin_access_control_id = aws_cloudfront_origin_access_control.rag_api.id
   }
