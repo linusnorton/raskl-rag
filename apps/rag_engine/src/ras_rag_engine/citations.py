@@ -198,7 +198,7 @@ def format_citations(chunks: list[RetrievedChunk], response_text: str = "", inde
         seen.add(key)
 
         display_n += 1
-        label = index_map[i] if index_map and i in index_map else display_n
+        label = index_map[i] if index_map and i in index_map else i
 
         display_start = c.start_page
         display_end = c.end_page

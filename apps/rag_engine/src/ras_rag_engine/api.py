@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from .agent import run_agent_streaming
-from .citations import extract_content, renumber_response, strip_llm_sources
+from .citations import extract_content, format_citations, renumber_response, strip_llm_sources
 from .config import RAGConfig
 from .retriever import RetrievedChunk
 
@@ -189,18 +189,18 @@ async def _stream_response(
                 prev_text = partial_text
                 yield {"data": _build_chunk_event(completion_id, content=delta)}
 
-        # After streaming completes, check if the LLM generated its own sources section.
-        # If so, we can't un-send it — skip appending code-generated sources.
+        # After streaming completes, append a Sources section.
+        # The body text was already streamed with the LLM's original [N] numbers,
+        # so we must NOT renumber — format sources using the original indices.
         content = extract_content(prev_text)
         clean = strip_llm_sources(content)
         if len(clean) < len(content):
             # LLM generated sources already streamed — skip code sources
             log.info("LLM generated its own sources section; skipping code-generated sources")
         else:
-            final_with_citations = renumber_response(prev_text, all_chunks)
-            if len(final_with_citations) > len(prev_text):
-                citation_delta = final_with_citations[len(prev_text) :]
-                yield {"data": _build_chunk_event(completion_id, content=citation_delta)}
+            citations = format_citations(all_chunks, clean)
+            if citations:
+                yield {"data": _build_chunk_event(completion_id, content=citations)}
 
     except Exception as e:
         log.exception("Error during streaming")
