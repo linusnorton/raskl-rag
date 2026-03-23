@@ -72,3 +72,11 @@ resource "aws_lambda_function_url" "rag_api" {
   authorization_type = "NONE" # Auth handled by app-level Bearer token
   invoke_mode        = "RESPONSE_STREAM"
 }
+
+resource "aws_lambda_permission" "function_url" {
+  statement_id           = "AllowFunctionURLInvoke"
+  action                 = "lambda:InvokeFunctionUrl"
+  function_name          = aws_lambda_function.rag_api.function_name
+  principal              = "*"
+  function_url_auth_type = "NONE"
+}
