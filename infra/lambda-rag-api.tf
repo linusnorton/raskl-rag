@@ -66,63 +66,19 @@ resource "aws_lambda_function" "rag_api" {
 }
 
 # --- Lambda Function URL (bypasses API Gateway 30s timeout, enables SSE streaming) ---
-# Uses IAM auth + CloudFront OAC because account-level BlockPublicPolicy
-# prevents NONE auth type on Lambda Function URLs.
+# Requires BlockPublicPolicy to be disabled on this function via AWS Console:
+# Lambda > raskl-rag-api > Configuration > Permissions > Resource-based policy > Public access
 
 resource "aws_lambda_function_url" "rag_api" {
   function_name      = aws_lambda_function.rag_api.function_name
-  authorization_type = "AWS_IAM"
+  authorization_type = "NONE" # Auth handled by app-level Bearer token
   invoke_mode        = "RESPONSE_STREAM"
 }
 
-resource "aws_lambda_permission" "cloudfront_oac" {
-  statement_id  = "AllowCloudFrontOAC"
-  action        = "lambda:InvokeFunctionUrl"
-  function_name = aws_lambda_function.rag_api.function_name
-  principal     = "cloudfront.amazonaws.com"
-  source_arn    = aws_cloudfront_distribution.rag_api.arn
-}
-
-# --- CloudFront distribution (provides public access to IAM-auth Function URL) ---
-
-resource "aws_cloudfront_origin_access_control" "rag_api" {
-  name                              = "${local.prefix}-rag-api-oac"
-  origin_access_control_origin_type = "lambda"
-  signing_behavior                  = "always"
-  signing_protocol                  = "sigv4"
-}
-
-resource "aws_cloudfront_distribution" "rag_api" {
-  comment         = "RAG API (Lambda Function URL)"
-  enabled         = true
-  http_version    = "http2"
-  is_ipv6_enabled = true
-
-  origin {
-    domain_name              = trimsuffix(trimprefix(aws_lambda_function_url.rag_api.function_url, "https://"), "/")
-    origin_id                = "rag-api-lambda"
-    origin_access_control_id = aws_cloudfront_origin_access_control.rag_api.id
-  }
-
-  default_cache_behavior {
-    target_origin_id       = "rag-api-lambda"
-    viewer_protocol_policy = "https-only"
-    allowed_methods        = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
-    cached_methods         = ["GET", "HEAD"]
-    compress               = true
-
-    # No caching — pass everything through to Lambda
-    cache_policy_id          = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad" # CachingDisabled
-    origin_request_policy_id = "b689b0a8-53d0-40ab-baf2-68738e2966ac" # AllViewerExceptHostHeader
-  }
-
-  restrictions {
-    geo_restriction {
-      restriction_type = "none"
-    }
-  }
-
-  viewer_certificate {
-    cloudfront_default_certificate = true
-  }
+resource "aws_lambda_permission" "function_url" {
+  statement_id           = "AllowFunctionURLInvoke"
+  action                 = "lambda:InvokeFunctionUrl"
+  function_name          = aws_lambda_function.rag_api.function_name
+  principal              = "*"
+  function_url_auth_type = "NONE"
 }

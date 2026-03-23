@@ -44,7 +44,7 @@ output "ecr_docproc_repo" {
   value       = aws_ecr_repository.docproc.repository_url
 }
 
-output "rag_api_cloudfront_url" {
-  description = "CloudFront URL for RAG API (streaming, bypasses API Gateway 30s timeout)"
-  value       = "https://${aws_cloudfront_distribution.rag_api.domain_name}"
+output "rag_api_function_url" {
+  description = "Lambda Function URL for RAG API (streaming, bypasses API Gateway 30s timeout)"
+  value       = aws_lambda_function_url.rag_api.function_url
 }
