@@ -214,17 +214,21 @@ the OpenAI-compatible API.
 temperatures (0.7+) introduce hallucination risk in citation-heavy responses. 0.5 gives natural
 narrative flow while keeping factual claims grounded in the retrieved context.
 
-### D9 — Lambda non-streaming
+### D9 — Lambda Function URL with response streaming
 
-**What we chose:** On Lambda, the API forces non-streaming responses (returns `application/json`
-instead of SSE), detected by checking for the `AWS_LAMBDA_FUNCTION_NAME` environment variable.
+**What we chose:** The RAG API Lambda is invoked via a Lambda Function URL with
+`RESPONSE_STREAM` invoke mode, bypassing API Gateway for chat requests. Open WebUI points
+directly at the Function URL. API Gateway remains for non-chat endpoints (images, health).
 
-**Why:** Lambda buffered invoke mode adds a `Content-Length` header to SSE responses. Open WebUI
-receives the full response body at once with `Content-Type: text/event-stream`, then forwards
-the raw SSE text (including `data:` prefixes and `[DONE]` markers) to the browser as visible
-content. Forcing `application/json` makes Open WebUI handle the response correctly.
+**Why:** API Gateway HTTP API has a hard 30-second timeout that cannot be increased. The agentic
+tool-calling loop (initial retrieval + multiple Bedrock LLM calls + tool executions) routinely
+takes 25-60 seconds for multi-part queries, causing 504 Gateway Timeout errors. Lambda Function
+URLs support response streaming with up to 15 minutes timeout, eliminating this bottleneck and
+enabling real SSE streaming to the client.
 
-Locally, streaming works normally via SSE.
+**What we considered:** An earlier approach forced non-streaming `application/json` on Lambda to
+work around API Gateway's inability to relay SSE. This worked but imposed the 30s timeout limit
+on all requests.
 
 ### D10 — AWS Bedrock for all model inference
 

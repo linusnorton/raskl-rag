@@ -43,3 +43,8 @@ output "ecr_docproc_repo" {
   description = "ECR repository URL for docproc image"
   value       = aws_ecr_repository.docproc.repository_url
 }
+
+output "rag_api_function_url" {
+  description = "Lambda Function URL for RAG API (streaming)"
+  value       = aws_lambda_function_url.rag_api.function_url
+}

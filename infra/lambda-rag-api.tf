@@ -49,8 +49,8 @@ resource "aws_lambda_function" "rag_api" {
       CHAT_TRANSCRIBE_S3_BUCKET         = aws_s3_bucket.docs.id
       CHAT_TRANSCRIBE_VOCABULARY_NAME   = aws_transcribe_vocabulary.jmbras.vocabulary_name
 
-      # Lambda Web Adapter
-      AWS_LWA_INVOKE_MODE          = "buffered"
+      # Lambda Web Adapter (response_stream for Function URL SSE streaming)
+      AWS_LWA_INVOKE_MODE          = "response_stream"
       AWS_LWA_READINESS_CHECK_PATH = "/"
       AWS_LWA_INIT_BINARY          = "/opt/extensions/lambda-adapter"
       PORT                         = "8000"
@@ -63,4 +63,12 @@ resource "aws_lambda_function" "rag_api" {
   lifecycle {
     ignore_changes = [image_uri]
   }
+}
+
+# --- Lambda Function URL (bypasses API Gateway 30s timeout, enables SSE streaming) ---
+
+resource "aws_lambda_function_url" "rag_api" {
+  function_name      = aws_lambda_function.rag_api.function_name
+  authorization_type = "NONE" # Auth handled by app-level Bearer token
+  invoke_mode        = "RESPONSE_STREAM"
 }
