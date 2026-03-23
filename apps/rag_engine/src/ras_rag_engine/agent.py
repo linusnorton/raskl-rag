@@ -67,6 +67,8 @@ Guidelines:
   volume or issue, count documents by publication or year, find works by a specific author, or get
   an overview of the corpus, use the `browse_corpus` tool instead of `search_documents`.
   Use action 'list' to show contents, 'count' to tally by field, and 'overview' for corpus-wide statistics.
+  When answering from browse_corpus results, do NOT use [N] citation markers — these are catalogue
+  listings, not retrieved passages. Present the information directly without source references.
 - Do not invent facts. Only state what the sources say.
 - When context contains images (![caption](url) with italic caption below), include relevant ones in your response preserving both the image markdown and the italic caption line. Skip images with generic captions like "Figure on p.X".\
 """

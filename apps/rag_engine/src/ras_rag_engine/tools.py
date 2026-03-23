@@ -356,6 +356,12 @@ def _build_where_clause(args: dict) -> tuple[str, dict]:
     return where, params
 
 
+_BROWSE_NO_CITE_NOTE = (
+    "\n\n(These results are from a metadata catalogue query. "
+    "Do NOT use [N] citation markers for this information.)"
+)
+
+
 def _execute_browse_corpus(args: dict, config: RAGConfig) -> tuple[str, list[RetrievedChunk]]:
     """Execute a corpus browse/introspection query."""
     import psycopg
@@ -400,7 +406,7 @@ def _execute_browse_corpus(args: dict, config: RAGConfig) -> tuple[str, list[Ret
                 for dtype, cnt in rows:
                     label = _TYPE_LABELS.get(dtype, f" [{dtype}]").strip(" []") if dtype else "Unknown"
                     lines.append(f"  {label}: {cnt}")
-            return "\n".join(lines), []
+            return "\n".join(lines) + _BROWSE_NO_CITE_NOTE, []
 
         elif action == "count":
             group_by = args.get("group_by", "publication")
@@ -423,7 +429,7 @@ def _execute_browse_corpus(args: dict, config: RAGConfig) -> tuple[str, list[Ret
             for val, cnt in rows:
                 display = val or "Unknown"
                 lines.append(f"- {display}: {cnt}")
-            return "\n".join(lines), []
+            return "\n".join(lines) + _BROWSE_NO_CITE_NOTE, []
 
         else:  # action == "list"
             rows = conn.execute(
@@ -456,7 +462,7 @@ def _execute_browse_corpus(args: dict, config: RAGConfig) -> tuple[str, list[Ret
                 if type_label:
                     parts.append(f"[{type_label}]")
                 lines.append(f"{i}. {', '.join(parts)}")
-            return "\n".join(lines), []
+            return "\n".join(lines) + _BROWSE_NO_CITE_NOTE, []
 
 
 def _execute_web_search(args: dict) -> tuple[str, list[RetrievedChunk]]:
