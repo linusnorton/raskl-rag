@@ -109,6 +109,57 @@ class TestExtractMetadataProvenance:
         assert "author" in sources
         assert sources["author"].source == "filename_pattern"
 
+    def test_muse_cover_page_extracts_metadata(self):
+        """MUSE-format cover pages (e.g. JMBRAS Vol 87) should extract volume, issue, pages."""
+        from ras_docproc.pipeline.extract_metadata import extract_metadata
+
+        doc = _make_document(source_filename="Thompson (2014) JMBRAS 87(1), 91-95.pdf")
+        # Simulate a MUSE cover page with citation line and article heading
+        cover_text = (
+            "PROJECT MUSE\n\n"
+            "Exploring Melayu and Other People-Grouping Concepts\n\n"
+            "Eric C. Thompson\n\n"
+            "Journal of the Malaysian Branch of the Royal Asiatic Society, Volume 87,\n"
+            "Part 1, No. 306, June 2014, pp. 91-95\n\n"
+            "Published by Malaysian Branch of the Royal Asiatic Society"
+        )
+        blocks = {1: [
+            _make_block(1, "PROJECT MUSE", block_type="heading"),
+            _make_block(1, cover_text),
+        ]}
+        pdf_meta = {"page_count": "7"}
+
+        doc = extract_metadata(doc, blocks, pdf_meta)
+
+        assert doc.volume == "87"
+        assert doc.issue == "1"
+        assert doc.page_range_label == "91-95"
+        assert doc.year == 2014
+        # Author comes from filename fallback (MUSE doesn't have Author(s): line)
+        assert doc.author == "Thompson"
+        assert doc.publication == "Journal of the Malaysian Branch of the Royal Asiatic Society"
+
+    def test_muse_cover_page_title_after_platform_heading(self):
+        """When first heading is 'PROJECT MUSE', title should be first substantial paragraph."""
+        from ras_docproc.pipeline.extract_metadata import extract_metadata
+
+        doc = _make_document(source_filename="Hardwick (2014) JMBRAS 87(1), 1-19.pdf")
+        blocks = {1: [
+            _make_block(1, "PROJECT MUSE", block_type="heading"),
+            _make_block(1, (
+                "Journal of the Malaysian Branch of the Royal Asiatic Society, Volume 87,\n"
+                "Part 1, No. 306, June 2014, pp. 1-19"
+            )),
+            _make_block(1, "Horsing Around Melayu: Kuda Kepang, Islamic Piety, and Identity Politics"),
+        ]}
+        pdf_meta = {"page_count": "21"}
+
+        doc = extract_metadata(doc, blocks, pdf_meta)
+
+        # Title should be the article title, not "PROJECT MUSE" or the citation
+        assert "Horsing Around" in doc.title
+        assert doc.author == "Hardwick"
+
 
 # --- Tests for LLM metadata enrichment ---
 
