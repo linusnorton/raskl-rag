@@ -65,6 +65,28 @@ resource "aws_lambda_function" "rag_api" {
   }
 }
 
+# --- Removed: CloudFront OAC resources from earlier approach ---
+
+removed {
+  from = aws_cloudfront_origin_access_control.rag_api
+  lifecycle { destroy = true }
+}
+
+removed {
+  from = aws_cloudfront_distribution.rag_api
+  lifecycle { destroy = true }
+}
+
+removed {
+  from = aws_lambda_permission.cloudfront_oac
+  lifecycle { destroy = true }
+}
+
+removed {
+  from = aws_lambda_permission.function_url
+  lifecycle { destroy = true }
+}
+
 # --- Lambda Function URL (bypasses API Gateway 30s timeout, enables SSE streaming) ---
 # NONE auth requires TWO permissions: lambda:InvokeFunctionUrl + lambda:InvokeFunction
 # (see https://docs.aws.amazon.com/lambda/latest/dg/urls-auth.html)
