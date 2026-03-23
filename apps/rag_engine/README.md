@@ -226,8 +226,8 @@ takes 25-60 seconds for multi-part queries, causing 504 Gateway Timeout errors. 
 URLs support response streaming with up to 15 minutes timeout, eliminating this bottleneck and
 enabling real SSE streaming to the client.
 
-**Setup note:** The Lambda function requires `BlockPublicPolicy` to be disabled via the AWS
-Console (Lambda > Configuration > Permissions) for the `NONE`-auth Function URL to work.
+**Setup note:** NONE-auth Function URLs require *both* `lambda:InvokeFunctionUrl` and
+`lambda:InvokeFunction` permissions in the resource-based policy. Missing either causes 403.
 
 **What we considered:** An earlier approach forced non-streaming `application/json` on Lambda to
 work around API Gateway's inability to relay SSE. This worked but imposed the 30s timeout limit

@@ -66,8 +66,8 @@ resource "aws_lambda_function" "rag_api" {
 }
 
 # --- Lambda Function URL (bypasses API Gateway 30s timeout, enables SSE streaming) ---
-# Requires BlockPublicPolicy to be disabled on this function via AWS Console:
-# Lambda > raskl-rag-api > Configuration > Permissions > Resource-based policy > Public access
+# NONE auth requires TWO permissions: lambda:InvokeFunctionUrl + lambda:InvokeFunction
+# (see https://docs.aws.amazon.com/lambda/latest/dg/urls-auth.html)
 
 resource "aws_lambda_function_url" "rag_api" {
   function_name      = aws_lambda_function.rag_api.function_name
@@ -75,10 +75,20 @@ resource "aws_lambda_function_url" "rag_api" {
   invoke_mode        = "RESPONSE_STREAM"
 }
 
-resource "aws_lambda_permission" "function_url" {
-  statement_id           = "AllowFunctionURLInvoke"
+resource "aws_lambda_permission" "function_url_invoke_url" {
+  statement_id           = "AllowFunctionURLInvokeUrl"
   action                 = "lambda:InvokeFunctionUrl"
   function_name          = aws_lambda_function.rag_api.function_name
   principal              = "*"
   function_url_auth_type = "NONE"
+}
+
+resource "aws_lambda_permission" "function_url_invoke_function" {
+  statement_id  = "AllowFunctionURLInvokeFunction"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.rag_api.function_name
+  principal     = "*"
+  # Ideally this would have condition lambda:InvokedViaFunctionUrl=true,
+  # but Terraform aws_lambda_permission doesn't support that condition.
+  # App-level Bearer token auth (CHAT_API_KEY) protects against unauthorized access.
 }
