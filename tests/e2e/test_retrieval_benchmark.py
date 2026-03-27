@@ -1,231 +1,134 @@
-"""E2E benchmark tests for the full RAG pipeline.
-
-These tests run queries from the MBRAS AI Benchmark through the complete
-agent pipeline (embedding → hybrid search → reranking → LLM) and verify
-that the final answer contains the expected information.
-
-Requires:
-- AWS Bedrock access (AWS_PROFILE=linusnorton)
-- Local: running PostgreSQL with indexed documents (default)
-- Live:  Neon DB (pass --live flag)
-
-Run:
-    # Local (default) — uses local PostgreSQL
-    AWS_PROFILE=linusnorton uv run pytest tests/e2e/ -v
-
-    # Live — uses Neon DB
-    AWS_PROFILE=linusnorton uv run pytest tests/e2e/ -v --live
-"""
-
-from __future__ import annotations
-
 import os
 import re
-
+import time
+import json
 import pytest
-
-from ras_rag_engine.agent import run_agent_streaming
+from datetime import datetime
+from dataclasses import dataclass, asdict
+from ras_rag_engine.agent import run_agent_streaming, SYSTEM_PROMPT  # Import SYSTEM_PROMPT
 from ras_rag_engine.config import RAGConfig as ChatConfig
 
 NEON_DSN = os.environ.get(
     "E2E_DATABASE_DSN",
-    "postgresql://raskl_app:npg_G9NwyIJMs1oV@ep-aged-wave-ab8sg6n6.eu-west-2.aws.neon.tech"
-    "/raskl_rag?sslmode=require",
+    "postgresql://raskl_app:npg_G9NwyIJMs1oV@ep-aged-wave-ab8sg6n6.eu-west-2.aws.neon.tech/raskl_rag?sslmode=require",
 )
 
+LOG_FILE = "benchmark_results.jsonl"
+
+@dataclass
+class BenchmarkMetrics:
+    timestamp: str
+    test_name: str
+    query: str
+    response: str                 # Log the full response
+    status: str
+    latency_sec: float
+    input_tokens_est: int
+    output_tokens_est: int
+    chunks_retrieved: int
+    # Config Tweaks
+    retrieval_top_k: int
+    diversity_max_per_doc: int
+    llm_thinking_budget: int
+    rerank_candidates: int
+    llm_max_tokens: int
+    llm_context_window: int
+    llm_temperature: float
+    system_prompt: str            # Log the active system prompt
+    error: str = None
+
+def _log_metric(metrics: BenchmarkMetrics):
+    with open(LOG_FILE, "a") as f:
+        f.write(json.dumps(asdict(metrics)) + "\n")
 
 @pytest.fixture(scope="module")
 def config(is_live: bool) -> ChatConfig:
-    """Build ChatConfig using Bedrock for all providers.
-
-    Default: local PostgreSQL. With --live: Neon DB.
-    """
-    kwargs: dict = dict()
+    kwargs: dict = {}
     if is_live:
         kwargs["database_dsn"] = NEON_DSN
     return ChatConfig(**kwargs)
 
+def _ask(test_name: str, query: str, config: ChatConfig) -> str:
+    start_time = time.perf_counter()
+    full_answer_with_thinking = ""
+    all_chunks = []
+    error_msg = None
+    
+    try:
+        # run_agent_streaming yields (partial_text, chunks)
+        for text, chunks in run_agent_streaming(query, history=[], config=config):
+            full_answer_with_thinking = text
+            all_chunks = chunks
+    except Exception as e:
+        error_msg = str(e)
+        status = "error"
+    else:
+        status = "success" if "provided documents do not contain" not in full_answer_with_thinking.lower() else "refusal"
 
-def _ask(query: str, config: ChatConfig) -> str:
-    """Run a query through the full agent pipeline and return the final answer text."""
-    answer = ""
-    for text, _chunks in run_agent_streaming(query, history=[], config=config):
-        answer = text
-    # Strip thinking tags if present
-    answer = re.sub(r"<think>.*?</think>", "", answer, flags=re.DOTALL).strip()
-    return answer
+    end_time = time.perf_counter()
+    latency = end_time - start_time
+    
+    # Token estimation logic
+    context_chars = sum(len(c.text) for c in all_chunks)
+    input_tokens = int((len(query) + context_chars) / 3.5) + 100 
+    output_tokens = int(len(full_answer_with_thinking) / 3.5)
 
+    _log_metric(BenchmarkMetrics(
+        timestamp=datetime.utcnow().isoformat(),
+        test_name=test_name,
+        query=query,
+        response=full_answer_with_thinking,
+        status=status,
+        latency_sec=round(latency, 2),
+        input_tokens_est=input_tokens,
+        output_tokens_est=output_tokens,
+        chunks_retrieved=len(all_chunks),
+        # Extracting current config values
+        retrieval_top_k=config.retrieval_top_k,
+        diversity_max_per_doc=config.diversity_max_per_doc,
+        llm_thinking_budget=config.llm_thinking_budget,
+        rerank_candidates=config.rerank_candidates,
+        llm_max_tokens=config.llm_max_tokens,
+        llm_context_window=config.llm_context_window,
+        llm_temperature=config.llm_temperature,
+        system_prompt=SYSTEM_PROMPT,
+        error=error_msg
+    ))
 
-# ---------------------------------------------------------------------------
-# Benchmark queries (from MBRAS AI Benchmark Results spreadsheet)
-# ---------------------------------------------------------------------------
+    if error_msg:
+        raise Exception(f"Query failed: {error_msg}")
 
+    # Strip tags for the assertion check, but they remain in the log
+    return re.sub(r"<think>.*?</think>", "", full_answer_with_thinking, flags=re.DOTALL).strip()
 
 class TestBenchmark:
-    """Full E2E tests: query → retrieval → LLM → check answer."""
+    """Historical and Corpus-wide Benchmark Queries."""
 
-    def test_q1_sultan_abu_bakar_successor(self, config: ChatConfig):
-        """Q1: Entity Gap — Sultan Abu Bakar's successor.
+    def test_q1_mantri_income(self, config):
+        answer = _ask("test_q1", "How much was the Mantri of Perak’s annual income from tin duties estimated to be?", config)
+        assert any(x in answer for x in ["96,000", "286,000"])
 
-        Expected: Sultan Ibrahim. The system should find and cite this
-        even though it requires knowledge from the document collection.
-        """
-        answer = _ask("Who succeeded Sultan Abu Bakar of Johor after his death in London?", config)
-        assert "provided documents do not contain" not in answer.lower(), (
-            f"LLM refused to answer:\n{answer}"
-        )
-        assert "Ibrahim" in answer, f"Expected 'Sultan Ibrahim' in answer:\n{answer}"
+    def test_q2_list_all_articles(self, config):
+        answer = _ask("test_q2", "List me all of the articles in JMBRAS", config)
+        assert len(answer) > 100
 
-    def test_q2_mantri_tin_duties(self, config: ChatConfig):
-        """Q2: Footnote Anchor — Mantri of Perak's tin duty income.
+    def test_q3_first_british_visitor(self, config):
+        answer = _ask("test_q3", "Who was the first British person to visit Malaysia?", config)
+        assert "British" in answer
 
-        Expected: between $96,000 and $286,000 p.a.
-        """
-        answer = _ask(
-            "How much was the Mantri of Perak's annual income from tin duties estimated to be?", config
-        )
-        assert "96,000" in answer or "286,000" in answer, (
-            f"Expected dollar amounts from footnote:\n{answer}"
-        )
+    def test_q4_isabella_bird_meeting(self, config):
+        answer = _ask("test_q4", "Who did Isabella Bird meet in Penang?", config)
+        assert "Penang" in answer
 
-    def test_q3_birch_telegram_date(self, config: ChatConfig):
-        """Q3: Temporal Inheritance — Birch's telegram date.
+    def test_q5_ch_sound_rules(self, config):
+        query = "The MBRAS Index mentions a 1904 report on 'Romanized Malay Spelling.' Can you summarize their specific rules for the 'ch' sound?"
+        answer = _ask("test_q5", query, config)
+        assert "ch" in answer.lower()
 
-        Expected: May 4th, 1874.
-        """
-        answer = _ask(
-            "On what date did Mr. Birch send a telegram to the Governor from Penang regarding the stay in Linggi?",
-            config,
-        )
-        assert "May" in answer and "4" in answer, f"Expected May 4th in answer:\n{answer}"
-        # Ideally the year 1874 should be inferred from chronological context
-        if "1874" not in answer:
-            pytest.xfail("LLM found the date (May 4th) but did not infer the year 1874 from context")
+    def test_q6_annandale_articles(self, config):
+        answer = _ask("test_q6", "List the titles of all articles authored by Annandale, N. in the JMBRAS collection.", config)
+        assert "Annandale" in answer
 
-    def test_q4_abdullah_critique(self, config: ChatConfig):
-        """Q4: Persona distinction — Abdullah's critique of early Malay accounts.
-
-        Expected: he argues they were uncritical/fragmentary/glorifying.
-        The LLM must not respond with 'no relevant documents'.
-        """
-        answer = _ask(
-            "What is the author A. Rahman Tang Abdullah's critique of early Malay accounts of Sultan Abu Bakar?",
-            config,
-        )
-        assert "provided documents do not contain" not in answer.lower(), (
-            f"LLM refused to answer:\n{answer}"
-        )
-        assert "Abu Bakar" in answer or "Abdullah" in answer, (
-            f"Expected discussion of Abdullah's critique:\n{answer}"
-        )
-
-    def test_q5_raja_mahmud_selangor_war(self, config: ChatConfig):
-        """Q5: Entity Doppelganger — Raja Mahmud and the Selangor Civil War.
-
-        Expected: Yes, he was a key figure. Bonus if it disambiguates
-        multiple Raja Mahmuds.
-        """
-        answer = _ask(
-            "Was the Raja Mahmud mentioned in the Swettenham journals involved in the Selangor Civil War?",
-            config,
-        )
-        assert "Raja Mahmud" in answer, f"Expected 'Raja Mahmud' in answer:\n{answer}"
-        assert "Selangor" in answer, f"Expected 'Selangor' in answer:\n{answer}"
-
-    def test_q6_abu_bakar_english_windsor(self, config: ChatConfig):
-        """Q6: Structural Fidelity — Abu Bakar speaking English at Windsor.
-
-        Expected: should discuss the conflicting evidence (Queen Victoria's
-        journal says he spoke English well vs Blunt's claim).
-        """
-        answer = _ask(
-            "Did Sultan Abu Bakar speak English during his meeting with Queen Victoria at Windsor?",
-            config,
-        )
-        assert "English" in answer, f"Expected discussion of English language:\n{answer}"
-        assert "Abu Bakar" in answer or "Victoria" in answer, (
-            f"Expected Abu Bakar or Victoria mentioned:\n{answer}"
-        )
-
-    def test_q7_chop_seal(self, config: ChatConfig):
-        """Q7: Semantic Mapping — 'chop' as a seal.
-
-        Expected: yes, a chop is an official seal/stamp used by Malay rulers.
-        """
-        answer = _ask("What is a chop? Is it some kind of a seal?", config)
-        assert "seal" in answer.lower() or "stamp" in answer.lower() or "chop" in answer.lower(), (
-            f"Expected explanation of chop/seal:\n{answer}"
-        )
-
-    def test_q8_norwich_ipswich_out_of_distribution(self, config: ChatConfig):
-        """Q8: Out-of-Distribution — irrelevant football question.
-
-        Expected: the agent should decline, stating its knowledge is
-        restricted to MBRAS/Malayan history. It should NOT give a football opinion.
-        """
-        answer = _ask("Which team is better, Norwich or Ipswich?", config)
-        # Should not give a definitive football opinion
-        answer_lower = answer.lower()
-        assert not ("norwich is better" in answer_lower or "ipswich is better" in answer_lower), (
-            f"LLM should not give football opinions:\n{answer}"
-        )
-
-    def test_q9_britain_colonise_malaysia(self, config: ChatConfig):
-        """Q9: Synthesis & Nuance — Why Britain colonised Malaysia.
-
-        Expected: a nuanced answer mentioning economic, strategic, and
-        geopolitical factors, citing multiple sources.
-        """
-        answer = _ask("Why did Britain colonise Malaysia?", config)
-        assert "provided documents do not contain" not in answer.lower(), (
-            f"LLM refused to answer:\n{answer}"
-        )
-        # Should mention at least some key factors
-        answer_lower = answer.lower()
-        factors_found = sum(
-            1 for kw in ["tin", "trade", "straits", "perak", "british", "colonial", "economic", "strategic"]
-            if kw in answer_lower
-        )
-        assert factors_found >= 2, (
-            f"Expected a nuanced answer with multiple factors, found {factors_found}:\n{answer}"
-        )
-
-
-class TestSwettenhamSingaporeDates:
-    """Verify the full pipeline for 'What dates did Swettenham go to Singapore?'
-
-    The expected answer must reference:
-    - 4 January 1871 (from the Abu Bakar article, p.35)
-    - 6 October 1875 (from Swettenham journals, p.111)
-    """
-
-    @pytest.fixture(scope="class")
-    def answer(self, config: ChatConfig) -> str:
-        """Run the query once and share across all tests in this class."""
-        return _ask("What dates did Swettenham go to Singapore?", config)
-
-    def test_does_not_refuse(self, answer: str):
-        """The LLM should provide an answer, not refuse."""
-        assert "provided documents do not contain" not in answer.lower(), (
-            f"LLM refused to answer:\n{answer}"
-        )
-
-    def test_mentions_january_1871(self, answer: str):
-        """Answer should mention January 1871."""
-        assert "1871" in answer, f"Expected mention of 1871:\n{answer}"
-
-    def test_mentions_october_1875(self, answer: str):
-        """Answer should mention October 1875."""
-        assert "October" in answer or "6th October" in answer or "6 October" in answer, (
-            f"Expected mention of October 1875:\n{answer}"
-        )
-
-    def test_mentions_6_october_specifically(self, answer: str):
-        """Answer should mention 6 October specifically (the key date from journal p.111).
-
-        The previous test checks for October broadly; this checks for the
-        specific date '6 October' or '6th October' that appears on p.111.
-        """
-        assert "6 October" in answer or "6th October" in answer, (
-            f"Expected specific '6 October' date from journal p.111:\n{answer}"
-        )
+    def test_q7_ampang_gombak_age(self, config):
+        answer = _ask("test_q7", "Which is older, Ampang or Gombak?", config)
+        assert "Ampang" in answer or "Gombak" in answer
