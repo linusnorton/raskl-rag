@@ -2,6 +2,9 @@
 name = "raskl-rag"
 version = "0.1.0"
 requires-python = ">=3.11"
+dependencies = [
+    "boto3>=1.42.59",
+]
 
 [tool.uv.workspace]
 members = ["apps/*"]
@@ -21,3 +24,9 @@ strict = true
 [tool.pytest.ini_options]
 testpaths = ["apps/docproc/tests"]
 markers = ["slow: marks tests as slow (deselect with '-m \"not slow\"')"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
+]
