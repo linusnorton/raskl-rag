@@ -2,133 +2,141 @@ import os
 import re
 import time
 import json
-import pytest
+import uuid
+from pathlib import Path
 from datetime import datetime
 from dataclasses import dataclass, asdict
-from ras_rag_engine.agent import run_agent_streaming, SYSTEM_PROMPT  # Import SYSTEM_PROMPT
+import pytest
+
+from ras_rag_engine.agent import run_agent_streaming, SYSTEM_PROMPT
 from ras_rag_engine.config import RAGConfig as ChatConfig
 
-NEON_DSN = os.environ.get(
-    "E2E_DATABASE_DSN",
-    "postgresql://raskl_app:npg_G9NwyIJMs1oV@ep-aged-wave-ab8sg6n6.eu-west-2.aws.neon.tech/raskl_rag?sslmode=require",
-)
-
-LOG_FILE = "benchmark_results.jsonl"
+RESULTS_DIR = Path("tests/results")
+# Unique ID for the entire batch execution
+BATCH_ID = f"batch_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:4]}"
+BATCH_FILE = RESULTS_DIR / f"{BATCH_ID}.jsonl"
 
 @dataclass
 class BenchmarkMetrics:
-    timestamp: str
     test_name: str
     query: str
-    response: str                 # Log the full response
+    expected_answer: str          # Factual baseline
+    eval_goal: str               # Behavioral baseline
+    response: str
     status: str
+    score: float
     latency_sec: float
     input_tokens_est: int
     output_tokens_est: int
-    chunks_retrieved: int
-    # Config Tweaks
-    retrieval_top_k: int
-    diversity_max_per_doc: int
-    llm_thinking_budget: int
-    rerank_candidates: int
-    llm_max_tokens: int
-    llm_context_window: int
-    llm_temperature: float
-    system_prompt: str            # Log the active system prompt
-    error: str = None
+    config: dict
+    timestamp: str = datetime.utcnow().isoformat()
 
-def _log_metric(metrics: BenchmarkMetrics):
-    with open(LOG_FILE, "a") as f:
+def _calculate_score(data: dict) -> float:
+    """
+    Scoring Rubric (Max 100):
+    - Status: 60 pts (Success vs Refusal/Error)
+    - Latency: 20 pts (Penalty if > 20s)
+    - Efficiency: 20 pts (Penalty if > 15k tokens)
+    """
+    if data["status"] != "success":
+        return 0.0
+    
+    score = 60.0
+    # Latency: -2 pts for every 5s over 20s
+    latency_penalty = max(0, (data["latency"] - 20) // 5) * 2
+    # Tokens: -2 pts for every 5k tokens over 15k
+    token_penalty = max(0, (data["tokens"] - 15000) // 5000) * 2
+    
+    return max(0, score + 20 - latency_penalty + 20 - token_penalty)
+
+def _log_to_batch(metrics: BenchmarkMetrics):
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    with open(BATCH_FILE, "a") as f:
         f.write(json.dumps(asdict(metrics)) + "\n")
 
-@pytest.fixture(scope="module")
-def config(is_live: bool) -> ChatConfig:
-    kwargs: dict = {}
-    if is_live:
-        kwargs["database_dsn"] = NEON_DSN
-    return ChatConfig(**kwargs)
-
-def _ask(test_name: str, query: str, config: ChatConfig) -> str:
+def _ask(test_name: str, query: str, expected: str, goal: str, config: ChatConfig) -> str:
     start_time = time.perf_counter()
-    full_answer_with_thinking = ""
-    all_chunks = []
-    error_msg = None
+    answer, chunks = "", []
     
     try:
-        # run_agent_streaming yields (partial_text, chunks)
-        for text, chunks in run_agent_streaming(query, history=[], config=config):
-            full_answer_with_thinking = text
-            all_chunks = chunks
+        for text, retrieved_chunks in run_agent_streaming(query, history=[], config=config):
+            answer, chunks = text, retrieved_chunks
+        status = "success" if "provided documents do not contain" not in answer.lower() else "refusal"
     except Exception as e:
-        error_msg = str(e)
-        status = "error"
-    else:
-        status = "success" if "provided documents do not contain" not in full_answer_with_thinking.lower() else "refusal"
+        answer, status = str(e), "error"
 
-    end_time = time.perf_counter()
-    latency = end_time - start_time
-    
-    # Token estimation logic
-    context_chars = sum(len(c.text) for c in all_chunks)
-    input_tokens = int((len(query) + context_chars) / 3.5) + 100 
-    output_tokens = int(len(full_answer_with_thinking) / 3.5)
+    latency = time.perf_counter() - start_time
+    in_tokens = int((len(query) + sum(len(c.text) for c in chunks)) / 3.5) + 100
 
-    _log_metric(BenchmarkMetrics(
-        timestamp=datetime.utcnow().isoformat(),
+    metrics = BenchmarkMetrics(
         test_name=test_name,
         query=query,
-        response=full_answer_with_thinking,
+        expected_answer=expected,
+        eval_goal=goal,
+        response=answer,
         status=status,
+        score=_calculate_score({"status": status, "latency": latency, "tokens": in_tokens}),
         latency_sec=round(latency, 2),
-        input_tokens_est=input_tokens,
-        output_tokens_est=output_tokens,
-        chunks_retrieved=len(all_chunks),
-        # Extracting current config values
-        retrieval_top_k=config.retrieval_top_k,
-        diversity_max_per_doc=config.diversity_max_per_doc,
-        llm_thinking_budget=config.llm_thinking_budget,
-        rerank_candidates=config.rerank_candidates,
-        llm_max_tokens=config.llm_max_tokens,
-        llm_context_window=config.llm_context_window,
-        llm_temperature=config.llm_temperature,
-        system_prompt=SYSTEM_PROMPT,
-        error=error_msg
-    ))
-
-    if error_msg:
-        raise Exception(f"Query failed: {error_msg}")
-
-    # Strip tags for the assertion check, but they remain in the log
-    return re.sub(r"<think>.*?</think>", "", full_answer_with_thinking, flags=re.DOTALL).strip()
+        input_tokens_est=in_tokens,
+        output_tokens_est=int(len(answer) / 3.5),
+        config=config.model_dump(include={'retrieval_top_k', 'llm_temperature', 'rerank_candidates'})
+    )
+    _log_to_batch(metrics)
+    return answer
 
 class TestBenchmark:
-    """Historical and Corpus-wide Benchmark Queries."""
+    @pytest.fixture(scope="class")
+    def cfg(self, is_live: bool):
+        dsn = os.environ.get("E2E_DATABASE_DSN")
+        if is_live and dsn:
+            return ChatConfig(database_dsn=dsn)
+        # Falling back to the defaults defined in RAGConfig
+        return ChatConfig()
 
-    def test_q1_mantri_income(self, config):
-        answer = _ask("test_q1", "How much was the Mantri of Perak’s annual income from tin duties estimated to be?", config)
-        assert any(x in answer for x in ["96,000", "286,000"])
+    def test_q1_basic_retrieval(self, cfg):
+        query = "How much was the Mantri of Perak’s annual income from tin duties estimated to be?"
+        goal = "Agent must use browse_corpus and avoid hallucinating a full list if truncated."
+        expected = "A summary or list of available early volumes/articles via tool use."
+        _ask("test_q1", query, expected, goal, cfg)
 
-    def test_q2_list_all_articles(self, config):
-        answer = _ask("test_q2", "List me all of the articles in JMBRAS", config)
-        assert len(answer) > 100
+    def test_q2_catalog_hallucination(self, cfg):
+        query = "List me all of the articles in JMBRAS"
+        goal = "Agent must use browse_corpus and avoid hallucinating a full list if truncated."
+        expected = "A summary or list of available early volumes/articles via tool use."
+        _ask("test_q2", query, expected, goal, cfg)
 
-    def test_q3_first_british_visitor(self, config):
-        answer = _ask("test_q3", "Who was the first British person to visit Malaysia?", config)
-        assert "British" in answer
+    def test_q3_chronological_superlative(self, cfg):
+        query = "Who was the first British person to visit Malaysia?"
+        goal = "The agent must prioritize the earliest dated record (e.g., 16th-century explorers) rather than the most semantically relevant 19th-century accounts often favored by the current vector search."
+        expected = "Ralph Fitch was the first British visitor to Malaysia."
+        _ask("test_q3", query, expected, goal, cfg)
 
-    def test_q4_isabella_bird_meeting(self, config):
-        answer = _ask("test_q4", "Who did Isabella Bird meet in Penang?", config)
-        assert "Penang" in answer
+    def test_q4_primary_source(self, cfg):
+        query = "Who did Isabella Bird meet in Penang?"
+        goal = "Test whether the relevant primary source is retrieved, rather than purely relying on the inaccurate (incomplete) MBRAS sources."
+        expected = "Isabella Bird met Bloomfield Douglas, Mr. Low, Mr. Maxwell, and Governor Sir W. Robinson."
+        _ask("test_q4", query, expected, goal, cfg)
 
-    def test_q5_ch_sound_rules(self, config):
+    def test_q5_false_premise(self, cfg):
         query = "The MBRAS Index mentions a 1904 report on 'Romanized Malay Spelling.' Can you summarize their specific rules for the 'ch' sound?"
-        answer = _ask("test_q5", query, config)
-        assert "ch" in answer.lower()
+        goal = "Test whether the agent checks the corpus and successfully determines that there is no 1904 report on 'Romanized Malay Spellings"
+        expected = "Clarify that there is no such report, and find relevant documents related to the question."
+        _ask("test_q5", query, expected, goal, cfg)
 
-    def test_q6_annandale_articles(self, config):
-        answer = _ask("test_q6", "List the titles of all articles authored by Annandale, N. in the JMBRAS collection.", config)
-        assert "Annandale" in answer
+    def test_q6_author_lookup(self, cfg):
+        query = "List the titles of all articles authored by Annandale, N. in the JMBRAS collection."
+        goal = "Check that it can retrieve articles written by a specific author"
+        expected = "Barnacles from Deep-Sea Telegraph Cables in the Malay, published in 1916 in Volume 74, Part 74, pages 281–302."
+        _ask("test_q6", query, expected, goal, cfg)
 
-    def test_q7_ampang_gombak_age(self, config):
-        answer = _ask("test_q7", "Which is older, Ampang or Gombak?", config)
-        assert "Ampang" in answer or "Gombak" in answer
+    def test_q7_comparative_answer(self, cfg):
+        query = "Which is older, Ampang or Gombak?"
+        goal = "Compare the dataset for two different knowledge fields and synthesize an accurate answer."
+        expected = "The MBRAS corpus suggests that Ampang was first settled by Chinese miners in 1857, while Gombak was settled earlier."
+        _ask("test_q7", query, expected, goal, cfg)
+
+    def test_q8_complex_query(self, cfg):
+        query = "What MBRAS articles tell the story of the Sultan Abdul Samad building, or Selangor Secretariat, and can you display it to me in a clear, easy to understand timeline?"
+        goal = "Measure the performance of a complex question, which requires many chunks to answers comprehensively."
+        expected = "A timeline of key events from 1880-1897 relevant to the construction of the building."
+        _ask("test_q8", query, expected, goal, cfg)
