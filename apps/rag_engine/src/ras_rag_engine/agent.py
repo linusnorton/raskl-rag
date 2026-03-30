@@ -89,7 +89,7 @@ def _build_system_prompt(chunks: list[RetrievedChunk], figures: list[RetrievedFi
     context = format_chunks_for_context(chunks, figures=figures)
     
     # Sandwich the context between the base identity and the strict guardrails
-    return f"{BASE_SYSTEM_PROMPT}\n\n---\nCONTEXT:\n{context}\n\n---\n{GUARDRAILS}"
+    return f"{SYSTEM_PROMPT}\n\n---\nCONTEXT:\n{context}\n\n---\n{GUARDRAILS}"
 
 
 def _compute_max_tokens(
