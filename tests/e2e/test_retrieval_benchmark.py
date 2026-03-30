@@ -3,6 +3,8 @@ import re
 import time
 import json
 import uuid
+import logging
+from unittest.mock import patch
 from pathlib import Path
 from datetime import datetime
 from dataclasses import dataclass, asdict
@@ -28,61 +30,156 @@ class BenchmarkMetrics:
     latency_sec: float
     input_tokens_est: int
     output_tokens_est: int
+    tool_rounds: int
+    tool_calls: list
+    retrieved_chunks: list
     config: dict
     timestamp: str = datetime.utcnow().isoformat()
 
 def _calculate_score(data: dict) -> float:
     """
-    Scoring Rubric (Max 100):
-    - Status: 60 pts (Success vs Refusal/Error)
-    - Latency: 20 pts (Penalty if > 20s)
-    - Efficiency: 20 pts (Penalty if > 15k tokens)
+    Conservative Scoring Rubric (Max 100):
+    - Status: 40 pts (Success vs Refusal/Error)
+    - Latency: 30 pts (Target < 8s. Harsh decay until 20s)
+    - Efficiency: 20 pts (Target < 4k tokens. Harsh decay until 12k)
+    - Rounds: 10 pts (Target: 1 round. Penalty for agent 'loops')
     """
     if data["status"] != "success":
         return 0.0
     
-    score = 60.0
-    # Latency: -2 pts for every 5s over 20s
-    latency_penalty = max(0, (data["latency"] - 20) // 5) * 2
-    # Tokens: -2 pts for every 5k tokens over 15k
-    token_penalty = max(0, (data["tokens"] - 15000) // 5000) * 2
+    # 1. Latency (30 pts)
+    # Full points if < 8s. 0 points if > 20s.
+    latency = data.get("latency", 0)
+    latency_score = 30.0
+    if latency > 8:
+        # Subtract 2.5 pts for every second over 8s
+        latency_score -= (latency - 8) * 2.5
     
-    return max(0, score + 20 - latency_penalty + 20 - token_penalty)
+    # 2. Token Efficiency (20 pts)
+    # Full points if < 4,000 tokens. 0 points if > 12,000.
+    tokens = data.get("tokens", 0)
+    token_score = 20.0
+    if tokens > 4000:
+        # Subtract 2.5 pts for every 1,000 tokens over 4k
+        token_score -= ((tokens - 4000) / 1000) * 2.5
+        
+    # 3. Agent Rounds (10 pts)
+    # Full points for 1 round (retrieval + answer). 
+    # -2.5 pts for every extra tool round.
+    rounds = data.get("rounds", 1)
+    round_score = max(0, 10.0 - (rounds - 1) * 2.5)
+    
+    total = 40.0 + max(0, latency_score) + max(0, token_score) + round_score
+    return round(total, 2)
 
 def _log_to_batch(metrics: BenchmarkMetrics):
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     with open(BATCH_FILE, "a") as f:
         f.write(json.dumps(asdict(metrics)) + "\n")
 
-def _ask(test_name: str, query: str, expected: str, goal: str, config: ChatConfig) -> str:
-    start_time = time.perf_counter()
-    answer, chunks = "", []
-    
+import time
+import logging
+from unittest.mock import patch
+
+# Configure logging to show up in pytest output
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def _ask(query_id: str, query: str, expected: str, goal: str, config: ChatConfig) -> str:
+    """Run a query through the full agent pipeline and log metrics + retrieved documents."""
+    metrics_tracker = {
+        "start_time": time.perf_counter(),
+        "tool_calls": [],
+        "llm_steps": 0,
+        "status": "success"
+    }
+    all_retrieved_chunks = []
+
+    # 1. Wrapper to track tool execution and latency
+    from ras_rag_engine.agent import execute_tool_call as real_execute
+    def tracked_execute(name, args, cfg, start_index=1):
+        t0 = time.perf_counter()
+        try:
+            result = real_execute(name, args, cfg, start_index=start_index)
+            return result
+        finally:
+            duration = time.perf_counter() - t0
+            metrics_tracker["tool_calls"].append({"name": name, "duration": duration})
+
+    # 2. Wrapper to track agent rounds
+    from ras_rag_engine.agent import get_llm_provider as real_get_llm
+    def tracked_get_llm(cfg):
+        llm = real_get_llm(cfg)
+        original_chat = llm.chat_completion
+        def tracked_chat(*args, **kwargs):
+            metrics_tracker["llm_steps"] += 1
+            return original_chat(*args, **kwargs)
+        llm.chat_completion = tracked_chat
+        return llm
+
+    # Execute with patches
+    answer = ""
     try:
-        for text, retrieved_chunks in run_agent_streaming(query, history=[], config=config):
-            answer, chunks = text, retrieved_chunks
-        status = "success" if "provided documents do not contain" not in answer.lower() else "refusal"
+        with patch("ras_rag_engine.agent.execute_tool_call", side_effect=tracked_execute), \
+             patch("ras_rag_engine.agent.get_llm_provider", side_effect=tracked_get_llm):
+            
+            for text, chunks in run_agent_streaming(query, history=[], config=config):
+                answer = text
+                all_retrieved_chunks = chunks
     except Exception as e:
-        answer, status = str(e), "error"
+        metrics_tracker["status"] = f"error: {str(e)}"
+        answer = f"Error: {e}"
 
-    latency = time.perf_counter() - start_time
-    in_tokens = int((len(query) + sum(len(c.text) for c in chunks)) / 3.5) + 100
+    # Calculate final stats
+    total_latency = time.perf_counter() - metrics_tracker["start_time"]
+    tool_latency = sum(t["duration"] for t in metrics_tracker["tool_calls"])
+    
+    # Strip thinking tags for the final log
+    clean_answer = re.sub(r"<think>.*?</think>", "", answer, flags=re.DOTALL).strip()
 
-    metrics = BenchmarkMetrics(
-        test_name=test_name,
+    # Log to console (visible with -s)
+    print(f"\n{'='*60}")
+    print(f"TEST:  {query_id}")
+    print(f"QUERY: {query}")
+    print(f"  Total Latency:  {total_latency:.2f}s")
+    print(f"  Tool Rounds:    {metrics_tracker['llm_steps']}")
+    if all_retrieved_chunks:
+        print(f"  Top Chunks:")
+        for i, chunk in enumerate(all_retrieved_chunks[:5], 1): # Log top 5 for brevity
+            print(f"    {i}. [{chunk.score:.4f}] {chunk.source_filename} (p.{chunk.start_page})")
+    print(f"{'='*60}")
+
+    # Log to Batch File
+    bench_metrics = BenchmarkMetrics(
+        test_name=query_id,
         query=query,
         expected_answer=expected,
         eval_goal=goal,
-        response=answer,
-        status=status,
-        score=_calculate_score({"status": status, "latency": latency, "tokens": in_tokens}),
-        latency_sec=round(latency, 2),
-        input_tokens_est=in_tokens,
-        output_tokens_est=int(len(answer) / 3.5),
-        config=config.model_dump(include={'retrieval_top_k', 'llm_temperature', 'rerank_candidates'})
+        response=clean_answer,
+        status=metrics_tracker["status"],
+        score=0.0, # Will be calculated by your _calculate_score function
+        latency_sec=total_latency,
+        tool_rounds=metrics_tracker["llm_steps"],
+        tool_calls=metrics_tracker["tool_calls"],
+        retrieved_chunks=[{
+            "doc": c.source_filename, 
+            "score": c.score, 
+            "page": c.start_page
+        } for c in all_retrieved_chunks],
+        input_tokens_est=0, # Hard to capture without more patching
+        output_tokens_est=0,
+        config=config.model_dump()
     )
-    _log_to_batch(metrics)
-    return answer
+    # Calculate score using your rubric
+    bench_metrics.score = _calculate_score({
+        "status": bench_metrics.status,
+        "latency": bench_metrics.latency_sec,
+        "tokens": 0 # Placeholder
+    })
+    
+    _log_to_batch(bench_metrics)
+    
+    return clean_answer
 
 class TestBenchmark:
     @pytest.fixture(scope="class")
