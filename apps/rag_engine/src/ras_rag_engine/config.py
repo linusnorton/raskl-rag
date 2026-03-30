@@ -61,7 +61,7 @@ class RAGConfig(BaseSettings):
     database_dsn: str = ""  # If set, overrides constructed DSN
 
     # Web search
-    web_search_enabled: bool = True
+    web_search_enabled: bool = False
 
     # Audio (AWS Transcribe temp storage)
     transcribe_s3_bucket: str = ""  # S3 bucket for temporary transcription files
