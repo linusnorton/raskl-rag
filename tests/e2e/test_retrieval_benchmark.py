@@ -95,8 +95,8 @@ class TestBenchmark:
 
     def test_q1_basic_retrieval(self, cfg):
         query = "How much was the Mantri of Perak’s annual income from tin duties estimated to be?"
-        goal = "Agent must use browse_corpus and avoid hallucinating a full list if truncated."
-        expected = "A summary or list of available early volumes/articles via tool use."
+        goal = "Test ability to find a needle in the haystick and cite it correctly."
+        expected = "Between $96,000 and $286,000"
         _ask("test_q1", query, expected, goal, cfg)
 
     def test_q2_catalog_hallucination(self, cfg):
