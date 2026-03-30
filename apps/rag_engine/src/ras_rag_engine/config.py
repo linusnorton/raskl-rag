@@ -21,8 +21,7 @@ class RAGConfig(BaseSettings):
     rerank_enabled: bool = True
     rerank_candidates: int = 60
     rerank_instruction: str = (
-        "Given a user question about historical JMBRAS and Swettenham journal documents, "
-        "judge whether the document passage is relevant"
+        "Identify passages that contain specific names, dates, or events relevant to the query. Ensure that both detailed narratives and concise references are considered equally if they contain factual answers."
     )
 
     # Provider selection ("bedrock" or "model_studio")
