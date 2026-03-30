@@ -27,6 +27,7 @@ _SEARCH_TOOL = {
                 "query": {
                     "type": "string",
                     "description": "A specific search query describing what information you need from the documents.",
+                    "maxLength": 120
                 },
                 "document_type": {
                     "type": "string",

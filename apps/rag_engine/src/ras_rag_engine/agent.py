@@ -37,9 +37,6 @@ Guidelines:
   footnotes, and abstracts.
 - When a passage mentions a relevant date, place, person, or event, include it even if it
   appears incidentally.
-- If the context passages are insufficient, use the search_documents tool with alternative
-  queries (synonyms, related terms, broader scope). For general knowledge outside the
-  collection, use the web_search tool.
 - When a passage's footnotes cite an external primary source (marked with [cites:] in the
   footnote section), distinguish between what the secondary author claims and what the
   primary source records. Mention the original source naturally, e.g. "according to a colonial
@@ -69,8 +66,17 @@ Guidelines:
   Use action 'list' to show contents, 'count' to tally by field, and 'overview' for corpus-wide statistics.
   When answering from browse_corpus results, do NOT use [N] citation markers — these are catalogue
   listings, not retrieved passages. Present the information directly without source references.
-- Do not invent facts. Only state what the sources say.
 - When context contains images (![caption](url) with italic caption below), include relevant ones in your response preserving both the image markdown and the italic caption line. Skip images with generic captions like "Figure on p.X".\
+"""
+
+GUARDRAILS = """\
+## CRITICAL GUARDRAILS (STRICT ADHERENCE REQUIRED)
+1. **CONCISE SEARCH QUERIES**: When using `search_documents`, your `query` parameter must be a short, targeted search phrase (e.g., "Sultan Abdul Samad construction dates"). 
+   - **NEVER** paste large blocks of text, multiple sentences, or existing context into the query. 
+   - If the current context is insufficient, describe the *missing* information in 5-15 words.
+2. **NO INVENTIONS**: Only state what the provided sources say.
+3. **CITATIONS**: Use [N] markers naturally in prose. Do not list sources at the end.
+4. **TOOL SELECTION**: Use `browse_corpus` for metadata/volume counts. Use `search_documents` only for finding specific historical facts within the text.
 """
 
 MAX_TOOL_ROUNDS = 5
@@ -79,9 +85,11 @@ MIN_OUTPUT_TOKENS = 256
 
 
 def _build_system_prompt(chunks: list[RetrievedChunk], figures: list[RetrievedFigure] | None = None) -> str:
-    """Build system prompt with initial context chunks embedded."""
+    """Build system prompt with initial context chunks and trailing guardrails."""
     context = format_chunks_for_context(chunks, figures=figures)
-    return SYSTEM_PROMPT + "\n\n---\nCONTEXT:\n" + context
+    
+    # Sandwich the context between the base identity and the strict guardrails
+    return f"{BASE_SYSTEM_PROMPT}\n\n---\nCONTEXT:\n{context}\n\n---\n{GUARDRAILS}"
 
 
 def _compute_max_tokens(
