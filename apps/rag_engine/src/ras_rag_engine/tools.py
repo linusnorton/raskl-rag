@@ -18,7 +18,7 @@ _SEARCH_TOOL = {
     "function": {
         "name": "search_documents",
         "description": (
-            "Search the indexed JMBRAS/Swettenham document collection for passages relevant to a query. "
+            "Search the indexed MBRAS document collection for passages relevant to a query. "
             "Use this when you need more context on a specific topic, person, place, or event from the documents."
         ),
         "parameters": {
@@ -65,7 +65,7 @@ _FIND_IMAGES_TOOL = {
     "function": {
         "name": "find_images",
         "description": (
-            "Search for images, figures, plates, maps, and photographs in the JMBRAS/Swettenham collection. "
+            "Search for images, figures, plates, maps, and photographs in the MBRAS collection. "
             "Use when the user asks to see or find a specific image, figure, plate, map, or photograph."
         ),
         "parameters": {
