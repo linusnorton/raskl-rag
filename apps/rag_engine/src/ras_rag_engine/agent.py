@@ -71,9 +71,7 @@ Guidelines:
 
 GUARDRAILS = """\
 ## CRITICAL GUARDRAILS (STRICT ADHERENCE REQUIRED)
-1. **CONCISE SEARCH QUERIES**: When using `search_documents`, your `query` parameter must be a short, targeted search phrase (e.g., "Sultan Abdul Samad construction dates"). 
-   - **NEVER** paste large blocks of text, multiple sentences, or existing context into the query. 
-   - If the current context is insufficient, describe the *missing* information in 5-15 words.
+1. **CONCISE QUERIES**: Your `search_documents` query must be < 20 words. NEVER paste context or full sentences into the query.
 2. **NO INVENTIONS**: Only state what the provided sources say.
 3. **CITATIONS**: Use [N] markers naturally in prose. Do not list sources at the end.
 4. **TOOL SELECTION**: Use `browse_corpus` for metadata/volume counts. Use `search_documents` only for finding specific historical facts within the text.
