@@ -27,3 +27,7 @@ infra-alibaba/packages/
 
 # Reports (build artifacts)
 reports/
+
+#Test logs
+
+tests/results/*
