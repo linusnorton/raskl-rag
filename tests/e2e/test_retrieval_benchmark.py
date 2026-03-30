@@ -91,63 +91,72 @@ def _ask(query_id: str, query: str, expected: str, goal: str, config: ChatConfig
         "start_time": time.perf_counter(),
         "tool_calls": [],
         "llm_steps": 0,
-        "status": "success"
+        "status": "success",
+        "input_tokens": 0,    # Initialize token counters
+        "output_tokens": 0
     }
     all_retrieved_chunks = []
 
-    # 1. Wrapper to track tool execution and latency
+    # 1. Wrapper to track tool execution (existing logic)
     from ras_rag_engine.agent import execute_tool_call as real_execute
     def tracked_execute(name, args, cfg, start_index=1):
         t0 = time.perf_counter()
         try:
-            result = real_execute(name, args, cfg, start_index=start_index)
-            return result
+            return real_execute(name, args, cfg, start_index=start_index)
         finally:
             duration = time.perf_counter() - t0
             metrics_tracker["tool_calls"].append({"name": name, "duration": duration})
 
-    # 2. Wrapper to track agent rounds
+    # 2. Wrapper to track agent rounds and capture tokens
     from ras_rag_engine.agent import get_llm_provider as real_get_llm
     def tracked_get_llm(cfg):
         llm = real_get_llm(cfg)
         original_chat = llm.chat_completion
-        def tracked_chat(*args, **kwargs):
+        original_stream = llm.chat_completion_stream
+
+        # Wrapper for tool-calling rounds (non-streaming)
+        def tracked_chat(messages, **kwargs):
             metrics_tracker["llm_steps"] += 1
-            return original_chat(*args, **kwargs)
+            # Capture input tokens for the tool round prompt
+            metrics_tracker["input_tokens"] += llm.count_tokens(messages, tools=kwargs.get("tools"))
+            
+            result = original_chat(messages, **kwargs)
+            
+            # Capture output tokens for the tool call/reasoning response
+            content = result.get("content") or ""
+            metrics_tracker["output_tokens"] += llm.count_tokens([{"role": "assistant", "content": content}])
+            return result
+
+        # Wrapper for the final answer (streaming)
+        def tracked_stream(messages, **kwargs):
+            # Capture input tokens for the final prompt
+            metrics_tracker["input_tokens"] += llm.count_tokens(messages, tools=kwargs.get("tools"))
+            yield from original_stream(messages, **kwargs)
+
         llm.chat_completion = tracked_chat
+        llm.chat_completion_stream = tracked_stream
         return llm
 
-    # Execute with patches
     answer = ""
     try:
         with patch("ras_rag_engine.agent.execute_tool_call", side_effect=tracked_execute), \
              patch("ras_rag_engine.agent.get_llm_provider", side_effect=tracked_get_llm):
             
             for text, chunks in run_agent_streaming(query, history=[], config=config):
-                answer = text
+                answer = text # 'text' is cumulative in your streaming implementation
                 all_retrieved_chunks = chunks
+        
+        # Capture final output tokens from the streamed response
+        # We use a fresh provider instance for the calculation
+        from ras_rag_engine.providers import get_llm_provider as get_llm
+        metrics_tracker["output_tokens"] += get_llm(config).count_tokens([{"role": "assistant", "content": answer}])
+
     except Exception as e:
         metrics_tracker["status"] = f"error: {str(e)}"
         answer = f"Error: {e}"
 
-    # Calculate final stats
     total_latency = time.perf_counter() - metrics_tracker["start_time"]
-    tool_latency = sum(t["duration"] for t in metrics_tracker["tool_calls"])
-    
-    # Strip thinking tags for the final log
     clean_answer = re.sub(r"<think>.*?</think>", "", answer, flags=re.DOTALL).strip()
-
-    # Log to console (visible with -s)
-    print(f"\n{'='*60}")
-    print(f"TEST:  {query_id}")
-    print(f"QUERY: {query}")
-    print(f"  Total Latency:  {total_latency:.2f}s")
-    print(f"  Tool Rounds:    {metrics_tracker['llm_steps']}")
-    if all_retrieved_chunks:
-        print(f"  Top Chunks:")
-        for i, chunk in enumerate(all_retrieved_chunks[:5], 1): # Log top 5 for brevity
-            print(f"    {i}. [{chunk.score:.4f}] {chunk.source_filename} (p.{chunk.start_page})")
-    print(f"{'='*60}")
 
     # Log to Batch File
     bench_metrics = BenchmarkMetrics(
@@ -157,28 +166,24 @@ def _ask(query_id: str, query: str, expected: str, goal: str, config: ChatConfig
         eval_goal=goal,
         response=clean_answer,
         status=metrics_tracker["status"],
-        score=0.0, # Will be calculated by your _calculate_score function
+        score=0.0,
         latency_sec=total_latency,
         tool_rounds=metrics_tracker["llm_steps"],
         tool_calls=metrics_tracker["tool_calls"],
-        retrieved_chunks=[{
-            "doc": c.source_filename, 
-            "score": c.score, 
-            "page": c.start_page
-        } for c in all_retrieved_chunks],
-        input_tokens_est=0, # Hard to capture without more patching
-        output_tokens_est=0,
+        retrieved_chunks=[{"doc": c.source_filename, "score": c.score, "page": c.start_page} for c in all_retrieved_chunks],
+        input_tokens_est=metrics_tracker["input_tokens"],  # Pass the tracked values
+        output_tokens_est=metrics_tracker["output_tokens"],
         config=config.model_dump()
     )
-    # Calculate score using your rubric
+
+    # Update score calculation to use the real token sum
     bench_metrics.score = _calculate_score({
         "status": bench_metrics.status,
         "latency": bench_metrics.latency_sec,
-        "tokens": 0 # Placeholder
+        "tokens": bench_metrics.input_tokens_est + bench_metrics.output_tokens_est
     })
     
     _log_to_batch(bench_metrics)
-    
     return clean_answer
 
 class TestBenchmark:
