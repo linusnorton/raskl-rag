@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import difflib
 import os
 from contextlib import asynccontextmanager
@@ -705,12 +706,16 @@ async def reindex_all_docs(request: Request):
 
     s3_client = s3.get_client()
     triggered = 0
-    for doc in docs:
+    for i, doc in enumerate(docs):
         versions = s3.list_versions(s3_client, config.s3_bucket, doc["doc_id"])
         if versions:
             latest = versions[-1]
             s3.trigger_reindex(s3_client, config.s3_bucket, doc["doc_id"], latest["version"])
             triggered += 1
+            # Throttle to avoid exhausting Neon connection slots
+            await asyncio.sleep(0.5)
+            if triggered % 20 == 0:
+                await asyncio.sleep(10)
 
     return JSONResponse({"ok": True, "triggered": triggered, "message": f"Reindexing {triggered} document(s)"})
 
