@@ -17,9 +17,9 @@ class ChunkerConfig(BaseSettings):
     restitch_enabled: bool = True
 
     # Chunking
-    max_chunk_tokens: int = 1024
+    max_chunk_tokens: int = 512
     min_chunk_tokens: int = 0
-    overlap_tokens: int = 128
+    overlap_tokens: int = 64
 
     # Embedding
     embed_batch_size: int = 32

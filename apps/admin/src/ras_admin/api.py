@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import difflib
 import os
 from contextlib import asynccontextmanager
@@ -687,6 +688,36 @@ async def bulk_reprocess(request: Request):
         conn.close()
 
     return JSONResponse({"ok": True, "triggered": triggered, "message": f"Reprocessing {triggered} document(s)"})
+
+
+@app.post("/api/documents/reindex-all")
+async def reindex_all_docs(request: Request):
+    user = _user_or_redirect(request)
+    if user is None:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    if not config.s3_bucket:
+        return JSONResponse({"error": "S3 not configured"}, status_code=400)
+
+    conn = db.get_connection(config)
+    try:
+        docs = db.get_all_documents(conn)
+    finally:
+        conn.close()
+
+    s3_client = s3.get_client()
+    triggered = 0
+    for i, doc in enumerate(docs):
+        versions = s3.list_versions(s3_client, config.s3_bucket, doc["doc_id"])
+        if versions:
+            latest = versions[-1]
+            s3.trigger_reindex(s3_client, config.s3_bucket, doc["doc_id"], latest["version"])
+            triggered += 1
+            # Throttle to avoid exhausting Neon connection slots
+            await asyncio.sleep(0.5)
+            if triggered % 20 == 0:
+                await asyncio.sleep(10)
+
+    return JSONResponse({"ok": True, "triggered": triggered, "message": f"Reindexing {triggered} document(s)"})
 
 
 @app.post("/api/documents/bulk-reindex")
