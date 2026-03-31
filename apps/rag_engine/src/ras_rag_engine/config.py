@@ -19,7 +19,7 @@ class RAGConfig(BaseSettings):
 
     # Reranker
     rerank_enabled: bool = True
-    rerank_candidates: int = 60
+    rerank_candidates: int = 50
     rerank_instruction: str = (
         "Identify passages that contain specific names, dates, or events relevant to the query. Ensure that both detailed narratives and concise references are considered equally if they contain factual answers."
     )
@@ -49,7 +49,7 @@ class RAGConfig(BaseSettings):
     retrieval_top_k: int = 20
 
     # Diversity — cap chunks per document in rerank candidates (0 = disabled)
-    diversity_max_per_doc: int = 10
+    diversity_max_per_doc: int = 5
 
     # Database
     db_host: str = "localhost"
