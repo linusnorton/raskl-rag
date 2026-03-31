@@ -47,7 +47,7 @@ class BedrockRerankProvider(RerankProvider):
                             "max_tokens_per_doc": 4096,
                         },
                     },
-                    "numberOfResults": top_k,
+                    "numberOfResults": min(top_k, len(documents)),
                 },
             },
         )
