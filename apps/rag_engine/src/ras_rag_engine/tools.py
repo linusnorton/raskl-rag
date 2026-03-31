@@ -27,7 +27,7 @@ _SEARCH_TOOL = {
                 "query": {
                     "type": "string",
                     "description": "A specific search query describing what information you need from the documents.",
-                    "maxLength": 120
+                    "maxLength": 255
                 },
                 "document_type": {
                     "type": "string",
@@ -351,8 +351,15 @@ def _build_where_clause(args: dict) -> tuple[str, dict]:
         conditions.append("document_type = %(doc_type)s")
         params["doc_type"] = args["document_type"]
     if args.get("author"):
+        # If there's a comma, assume the part after it is a first name/initial
+        # and the part before it is the surname.
+        if "," in args.get("author"):
+            surname = args.get("author").split(",")[0].strip()
+            params["author"] = f"%{surname}%"
+        else:
+            params["author"] = f"%{args.get("author")}%"
+        
         conditions.append("author ILIKE %(author)s")
-        params["author"] = f"%{args['author']}%"
     where = " AND ".join(conditions) if conditions else "TRUE"
     return where, params
 
