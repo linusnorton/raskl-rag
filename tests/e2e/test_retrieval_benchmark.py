@@ -105,7 +105,11 @@ def _ask(query_id: str, query: str, expected: str, goal: str, config: ChatConfig
             return real_execute(name, args, cfg, start_index=start_index)
         finally:
             duration = time.perf_counter() - t0
-            metrics_tracker["tool_calls"].append({"name": name, "duration": duration})
+            metrics_tracker["tool_calls"].append({
+            "name": name, 
+            "args": args, 
+            "duration": duration
+        })
 
     # 2. Wrapper to track agent rounds and capture tokens
     from ras_rag_engine.agent import get_llm_provider as real_get_llm
