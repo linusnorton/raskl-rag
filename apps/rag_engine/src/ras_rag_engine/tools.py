@@ -353,11 +353,12 @@ def _build_where_clause(args: dict) -> tuple[str, dict]:
     if args.get("author"):
         # If there's a comma, assume the part after it is a first name/initial
         # and the part before it is the surname.
-        if "," in args.get("author"):
-            surname = args.get("author").split(",")[0].strip()
+        author = args["author"]
+        if "," in author:
+            surname = author.split(",")[0].strip()
             params["author"] = f"%{surname}%"
         else:
-            params["author"] = f"%{args.get("author")}%"
+            params["author"] = f"%{author}%"
         
         conditions.append("author ILIKE %(author)s")
     where = " AND ".join(conditions) if conditions else "TRUE"
