@@ -1,12 +1,10 @@
 """Citation extraction, renumbering, and formatting for RAG responses."""
 
 from __future__ import annotations
-
 import re
-
 from .retriever import RetrievedChunk
 
-_FILENAME_RE = re.compile(r"^(.+?)\s*\((\d{4})\)")
+_FILENAME_RE = re.compile(r'\[\s*(\d+(?:\s*,\s*\d+)*)\s*\]')
 
 
 def _parse_filename_metadata(filename: str) -> tuple[str, str]:
@@ -80,36 +78,24 @@ def make_index_map(text: str) -> dict[int, int]:
     return seen
 
 
-def collapse_duplicate_indices(
-    index_map: dict[int, int],
-    all_chunks: list[RetrievedChunk],
-) -> dict[int, int]:
-    """Collapse indices that point to the same (chunk_id, start_page) to the same display number.
-
-    When multiple context passages come from the same underlying chunk, the LLM may cite them
-    with different [N] markers. This function merges them so they share a single display number,
-    then renumbers the remaining display numbers consecutively.
-    """
+def collapse_duplicate_indices(index_map: dict[int, int], all_chunks: list[RetrievedChunk]) -> dict[int, int]:
+    """Merge indices that point to the same document and page into a single label."""
     if not index_map:
         return index_map
 
-    # Map each original index to its chunk identity
-    chunk_key_for_orig: dict[int, tuple[str, int]] = {}
+    chunk_key_for_orig = {}
     for orig in index_map:
         if 1 <= orig <= len(all_chunks):
             c = all_chunks[orig - 1]
-            chunk_key_for_orig[orig] = (c.chunk_id, c.start_page)
+            chunk_key_for_orig[orig] = (c.doc_id, c.start_page)
 
-    # Group original indices by chunk identity, assign first-seen display number
-    key_to_display: dict[tuple[str, int], int] = {}
-    collapsed: dict[int, int] = {}
+    key_to_display = {}
+    collapsed = {}
     next_display = 1
 
-    # Iterate in display-number order (i.e. order of first appearance in text)
     for orig in sorted(index_map, key=lambda o: index_map[o]):
         key = chunk_key_for_orig.get(orig)
         if key is None:
-            # Index doesn't map to a known chunk — keep its display number
             collapsed[orig] = next_display
             next_display += 1
             continue
@@ -135,60 +121,62 @@ def renumber_text(text: str, mapping: dict[int, int]) -> str:
     return text.replace("[\x00", "[").replace("\x00]", "]")
 
 
+def _clean_metadata(text: str | None) -> str:
+    """Removes messy markdown and standardises society/journal abbreviations."""
+    if not text:
+        return ""
+    
+    # 1. Strip corrupted asterisks and whitespace
+    text = text.replace("*", "").strip()
+    
+    # 2. Priority Replacements (Longest/Most Specific First)
+    replacements = [
+        (r"Journal of the (Malaysian|Malayan) Branch of the Royal Asiatic Society", "JMBRAS"),
+        (r"Journal of the Straits Branch of the Royal Asiatic Society", "JSBRAS"),
+        (r"(Malaysian|Malayan) Branch of the Royal Asiatic Society", "MBRAS"),
+        (r"Straits Branch of the Royal Asiatic Society", "JSBRAS"),
+    ]
+    
+    for pattern, replacement in replacements:
+        # Use case-insensitive regex to catch variations
+        text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+        
+    return text
+
 def _format_citation_line(label: int, c: RetrievedChunk, pages: str) -> str:
-    """Format a single citation in academic style.
+    """Format a citation in JMBRAS style: Author (Year). 'Title', *Publication*, Pages."""
+    author = _clean_metadata(c.author or "")
+    year = str(c.year) if c.year else ""
+    title = _clean_metadata(c.title or c.source_filename)
+    publication = _clean_metadata(c.publication)
+    
+    author_seg = f"{author} ({year})" if author and year else (author or (f"({year})" if year else ""))
+    pages = pages.replace("-", "–") # JMBRAS requires en-dashes for ranges
 
-    Target: [N] Author (year). Title. Publication, pages · Type
-    Fields are omitted when not available.
-    """
-    segments: list[str] = []
-
-    # Use DB metadata, falling back to parsing the source filename
-    fn_author, fn_year = _parse_filename_metadata(c.source_filename)
-    author = c.author or fn_author
-    year = fn_year or (str(c.year) if c.year else "")
-
-    # Author (year)
-    if author:
-        segments.append(f"{author} ({year})" if year else author)
-    elif year:
-        segments.append(f"({year})")
-
-    # Title — italicised
-    title = c.title or c.source_filename
-    segments.append(f"*{title}*")
-
-    # Publication: Publisher, pages
-    if c.publication:
-        segments.append(f"{c.publication}, {pages}")
+    if publication:
+        citation_body = f"'{title}', *{publication}*"
     else:
-        segments.append(pages)
+        citation_body = f"*{title}*"
 
-    return f"[{label}] " + ". ".join(segments)
+    segments = [f"[{label}] {author_seg}".strip(), f"{citation_body}, {pages}" if pages else citation_body]
+    
+    if getattr(c, 'url', None):
+        segments.append(f"🔗 {c.url}") # Need to add url column to documents table and update retriever.py
 
+    return ". ".join(segments).replace("..", ".")
 
 def format_citations(chunks: list[RetrievedChunk], response_text: str = "", index_map: dict[int, int] | None = None) -> str:
-    """Build a deduplicated markdown citation block from retrieved chunks.
-
-    Only includes chunks that the LLM actually cited via [N] markers.
-    If the response contains text but no [N] markers, returns no sources.
-    index_map remaps original chunk indices to consecutive display labels.
-    """
+    """Build a deduplicated markdown citation block using JMBRAS formatting."""
     if not chunks:
         return ""
 
     cited = extract_cited_indices(response_text) if response_text else set()
-
-    # If the LLM produced a response but cited nothing, show no sources
-    # (avoids dumping all retrieved chunks for pure-image or no-citation responses)
     if response_text and not cited:
         return ""
 
     seen: set[str] = set()
     lines: list[str] = []
-    display_n = 0
     for i, c in enumerate(chunks, start=1):
-        # Filter to only cited chunks (if we detected any citations)
         if cited and i not in cited:
             continue
 
@@ -197,41 +185,60 @@ def format_citations(chunks: list[RetrievedChunk], response_text: str = "", inde
             continue
         seen.add(key)
 
-        display_n += 1
         label = index_map[i] if index_map and i in index_map else i
 
+        # Standardize page range: single space after p./pp. and en-dash (–) for ranges [cite: 54, 68]
         display_start = c.start_page
         display_end = c.end_page
-        pages = f"p.{display_start}" if display_start == display_end else f"pp.{display_start}-{display_end}"
+        if display_start == display_end:
+            pages = f"p. {display_start}"
+        else:
+            pages = f"pp. {display_start}–{display_end}"
 
+        # Call the updated 3-argument function
         line = _format_citation_line(label, c, pages)
         lines.append(line)
 
     if not lines:
         return ""
-    # Sort by display label so sources appear in [1], [2], [3] order
     lines.sort(key=lambda l: int(re.match(r'\[(\d+)\]', l).group(1)))
     return "\n\n---\n**Sources:**\n" + "\n".join(lines)
 
 
 def renumber_response(partial_text: str, all_chunks: list[RetrievedChunk]) -> str:
-    """Renumber citations in a complete response and append formatted sources."""
-    content = extract_content(partial_text)
-    # Strip any LLM-generated sources section before processing citations
-    content = strip_llm_sources(content)
+    """Main entry point: Renumbers text and appends the source bibliography."""
+    # Strip LLM 'think' block and user-generated bibliographies
+    content = re.sub(r'<think>.*?</think>\s*', '', partial_text, flags=re.DOTALL)
+    content = re.sub(r'\n+(?:---\n)?\*{0,2}(?:Sources?|References|Bibliography):?.*', '', content, flags=re.IGNORECASE | re.DOTALL)
+
     mapping = make_index_map(content)
-    # Collapse duplicate chunk references to the same display number
     mapping = collapse_duplicate_indices(mapping, all_chunks)
+    
     if mapping:
-        renumbered = renumber_text(content, mapping)
-        think_match = re.match(r'<think>.*?</think>\s*', partial_text, re.DOTALL)
-        partial_text = (think_match.group(0) if think_match else '') + renumbered
-    else:
-        # Still need to apply stripped content (no citations, but sources may have been stripped)
-        think_match = re.match(r'<think>.*?</think>\s*', partial_text, re.DOTALL)
-        partial_text = (think_match.group(0) if think_match else '') + content
-    # Pass original content (pre-renumber) so cited filter uses original LLM chunk indices
-    citations = format_citations(all_chunks, content, index_map=mapping)
-    if citations and partial_text:
-        return partial_text + citations
-    return partial_text
+        content = renumber_text(content, mapping)
+    
+    # Format the bibliography
+    lines = []
+    seen_keys = set()
+    cited_indices = set(mapping.keys())
+    
+    for i, chunk in enumerate(all_chunks, start=1):
+        if i not in cited_indices:
+            continue
+        key = (chunk.doc_id, chunk.start_page)
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        
+        display_label = mapping[i]
+        pg_label = f"p. {chunk.start_page}" if chunk.start_page == chunk.end_page else f"pp. {chunk.start_page}–{chunk.end_page}"
+        lines.append(_format_citation_line(display_label, chunk, pg_label))
+
+    lines.sort(key=lambda x: int(re.match(r'\[(\d+)\]', x).group(1)))
+    
+    bibliography = "\n\n---\n**Sources:**\n" + "\n".join(lines) if lines else ""
+    
+    # Reconstruct final response with think block preserved
+    think_match = re.match(r'<think>.*?</think>\s*', partial_text, re.DOTALL)
+    prefix = think_match.group(0) if think_match else ""
+    return prefix + content + bibliography
