@@ -176,6 +176,7 @@ def retrieve(
     publication: str | None = None,
 ) -> list[RetrievedChunk]:
     """Embed the query and retrieve the most similar chunks via hybrid search (vector + full-text RRF)."""
+    query = query[:2000] # Character limit for retrieval queries
     top_k = top_k or config.retrieval_top_k
     fetch_k = config.rerank_candidates if config.rerank_enabled else top_k
     # When diversity cap is active, fetch extra from SQL so the cap has enough to work with

@@ -440,18 +440,19 @@ def _execute_browse_corpus(args: dict, config: RAGConfig) -> tuple[str, list[Ret
             return "\n".join(lines) + _BROWSE_NO_CITE_NOTE, []
 
         else:  # action == "list"
+            display_limit = 25
             rows = conn.execute(
                 f"""
                 SELECT title, author, year, volume, issue, document_type, page_range_label, source_filename
                 FROM documents WHERE {where}
                 ORDER BY year NULLS LAST, volume NULLS LAST, issue NULLS LAST, title NULLS LAST
-                LIMIT 100
+                LIMIT {display_limit}
                 """,
                 params,
             ).fetchall()
             if not rows:
                 return "No documents found matching those filters.", []
-            lines = [f"Found {len(rows)} document(s):"]
+            lines = [f"Found {len(rows)} document(s) (showing top {display_limit}):"]
             for i, (title, author, year, volume, issue, doc_type, pages, filename) in enumerate(rows, 1):
                 display_title = title or filename
                 type_label = _TYPE_LABELS.get(doc_type, "").strip(" []")

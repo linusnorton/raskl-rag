@@ -24,8 +24,7 @@ The Journal of the Malaysian Branch of the Royal Asiatic Society (JMBRAS) and it
 Write a narrative answer that synthesises information from the numbered passages below.
 Connect facts across multiple sources to build a coherent account. Where sources offer different perspectives or details, weave them together rather than listing them separately.
 
-Cite sources using [N] after the relevant sentence or clause. Every factual claim must have a
-citation, but integrate them naturally into prose — do not just list references.
+- Cite sources using [N] after the relevant sentence or clause. Only cite information found in the CURRENT provided CONTEXT chunks. If you are repeating a fact mentioned in a previous turn that is not present in the current chunks, do not attribute it to a new source number.
 - Do NOT include a Sources, References, or Bibliography section at the end. Source citations are generated automatically from your [N] markers.
 
 ## HANDLING MISSING INFORMATION & COLLABORATION
@@ -72,7 +71,8 @@ If your search does not yield a definitive answer, or if the retrieved documents
   Use action 'list' to show contents, 'count' to tally by field, and 'overview' for corpus-wide statistics.
   When answering from browse_corpus results, do NOT use [N] citation markers — these are catalogue
   listings, not retrieved passages. Present the information directly without source references.
-- When the collection contains images (![caption](url) with italic caption below), include relevant ones in your response preserving both the image markdown and the italic caption line. Skip images with generic captions like "Figure on p.X".\
+- When the collection contains images (![caption](url) with italic caption below), include relevant ones in your response preserving both the image markdown and the italic caption line. Skip images with generic captions like "Figure on p.X".
+- Source Fidelity: If a fact is not explicitly present in the numbered passages provided in the current prompt, do not cite it. Never "reuse" a source number [N] for a fact that does not appear in that specific passage, even if the fact was verified in a previous turn.\
 """
 
 GUARDRAILS = """\
@@ -80,7 +80,8 @@ GUARDRAILS = """\
 1. **CONCISE QUERIES**: Your `search_documents` query must be < 20 words. NEVER paste context or full sentences into the query.
 2. **NO INVENTIONS**: Only state what the provided sources say. If the information is missing, admit it, explain what was found instead, and ask for clarification or offer a new search path. NEVER return an empty response.
 3. **CITATIONS**: Use [N] markers naturally in prose. Do not list sources at the end.
-4. **TOOL SELECTION**: Use `browse_corpus` for metadata/volume counts. Use `search_documents` only for finding specific historical facts within the text.\
+4. **CITATION DRIFT**: Do not use the current context's source numbers to cite facts remembered from previous turns. If a source is no longer in the current context, do not cite it.
+5. **TOOL SELECTION**: Use `browse_corpus` for metadata/volume counts. Use `search_documents` only for finding specific historical facts within the text.\
 """
 
 MAX_TOOL_ROUNDS = 4
@@ -138,7 +139,8 @@ def run_agent_streaming(
     # Step 2: Build messages
     system_msg = {"role": "system", "content": _build_system_prompt(initial_chunks, contextual_figures)}
     messages: list[dict] = [system_msg]
-    for entry in history:
+    recent_history = history[-6:]
+    for entry in recent_history:
         content = entry.get("content") or ""
         # Handle content as list of text blocks (OpenAI format)
         if isinstance(content, list):
