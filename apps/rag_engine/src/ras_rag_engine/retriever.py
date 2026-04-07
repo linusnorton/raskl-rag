@@ -70,6 +70,7 @@ WITH vector_results AS (
       AND (%(year_to)s::int IS NULL OR d_v.year <= %(year_to)s)
       AND (%(language)s::text IS NULL OR d_v.language = %(language)s)
       AND (%(publication)s::text IS NULL OR d_v.publication = %(publication)s)
+      AND (%(source_filename)s::text IS NULL OR d_v.source_filename = %(source_filename)s)
     ORDER BY c.embedding <=> %(vec)s::vector
     LIMIT 100
 ),
@@ -90,6 +91,7 @@ text_results AS (
       AND (%(year_to)s::int IS NULL OR d.year <= %(year_to)s)
       AND (%(language)s::text IS NULL OR d.language = %(language)s)
       AND (%(publication)s::text IS NULL OR d.publication = %(publication)s)
+      AND (%(source_filename)s::text IS NULL OR d.source_filename = %(source_filename)s)
     LIMIT 100
 ),
 fused AS (
@@ -174,6 +176,7 @@ def retrieve(
     year_to: int | None = None,
     language: str | None = None,
     publication: str | None = None,
+    source_filename: str | None = None,
 ) -> list[RetrievedChunk]:
     """Embed the query and retrieve the most similar chunks via hybrid search (vector + full-text RRF)."""
     query = query[:2000] # Character limit for retrieval queries
@@ -189,8 +192,8 @@ def retrieve(
         with conn.cursor() as cur:
             tsquery = _build_tsquery(query, cur)
             cur.execute(RETRIEVE_SQL, {
-                "vec": vec_str, "tsquery": tsquery, "top_k": sql_limit, "doc_type": document_type,
-                "year_from": year_from, "year_to": year_to, "language": language, "publication": publication,
+                "vec": vec_str, "tsquery": tsquery, "top_k": sql_limit, "doc_type": document_type, "source_filename": source_filename,
+                "year_from": year_from, "year_to": year_to, "language": language, "publication": publication, 
             })
             rows = cur.fetchall()
 
