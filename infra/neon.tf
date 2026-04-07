@@ -32,5 +32,9 @@ locals {
   neon_password = neon_role.app.password
   neon_dbname   = neon_database.main.name
   neon_dsn      = "postgresql://${neon_role.app.name}:${neon_role.app.password}@${neon_project.main.database_host}/${neon_database.main.name}?sslmode=require"
-  neon_open_webui_dsn = "postgresql://${neon_role.app.name}:${neon_role.app.password}@${neon_project.main.database_host}/${neon_database.open_webui.name}?sslmode=require"
+  # Open WebUI uses the Neon pooler endpoint so its long-lived SQLAlchemy
+  # connections terminate at PgBouncer instead of pinning the compute on,
+  # allowing Neon to scale to zero when idle.
+  neon_open_webui_pooler_host = replace(neon_project.main.database_host, "/^([^.]+)\\./", "$1-pooler.")
+  neon_open_webui_dsn = "postgresql://${neon_role.app.name}:${neon_role.app.password}@${local.neon_open_webui_pooler_host}/${neon_database.open_webui.name}?sslmode=require"
 }
