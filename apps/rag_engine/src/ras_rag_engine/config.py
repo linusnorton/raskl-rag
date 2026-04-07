@@ -11,7 +11,7 @@ class RAGConfig(BaseSettings):
     # Chat LLM
     llm_max_tokens: int = 4096
     llm_context_window: int = 65536
-    llm_temperature: float = 0.5
+    llm_temperature: float = 0.4
 
     # Embedding
     embed_dimensions: int = 1024
@@ -20,9 +20,11 @@ class RAGConfig(BaseSettings):
     # Reranker
     rerank_enabled: bool = True
     rerank_candidates: int = 50
+    rerank_relevance_score: float = 0.4
     rerank_instruction: str = (
         "Identify passages that contain specific names, dates, or events relevant to the query. Ensure that both detailed narratives and concise references are considered equally if they contain factual answers."
     )
+
 
     # Provider selection ("bedrock" or "model_studio")
     llm_provider: str = "bedrock"
@@ -58,9 +60,6 @@ class RAGConfig(BaseSettings):
     db_user: str = "raskl"
     db_password: str = "raskl"
     database_dsn: str = ""  # If set, overrides constructed DSN
-
-    # Web search
-    web_search_enabled: bool = False
 
     # Audio (AWS Transcribe temp storage)
     transcribe_s3_bucket: str = ""  # S3 bucket for temporary transcription files

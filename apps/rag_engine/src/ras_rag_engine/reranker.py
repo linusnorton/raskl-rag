@@ -33,9 +33,11 @@ def rerank(query: str, chunks: list[RetrievedChunk], config: RAGConfig, top_k: i
 
     result = []
     for idx, score in ranked:
+        if score < config.rerank_relevance_score:
+            continue 
+            
         chunk = chunks[idx]
         chunk.score = score
-        log.debug("rerank: %.4f  %s...", score, chunk.text[:80])
         result.append(chunk)
 
     return result
