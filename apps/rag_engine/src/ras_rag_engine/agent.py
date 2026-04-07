@@ -187,6 +187,7 @@ def run_agent_streaming(
         messages.append(assistant_msg)
 
         # Execute each tool call
+        tool_results_blocks = []
         for tc in tool_calls:
             fn_name = tc["function"]["name"]
             fn_args = tc["function"]["arguments"]
@@ -196,11 +197,16 @@ def run_agent_streaming(
             # deduplicates by chunk_id when building the Sources list.
             all_chunks.extend(new_chunks)
 
-            messages.append({
-                "role": "tool",
+            tool_results_blocks.append({
                 "tool_call_id": tc["id"],
                 "content": result_text,
             })
+
+        messages.append({
+            "role": "tool",
+            "tool_call_id": tc["id"],
+            "content": result_text,
+        })
 
     # Step 4: Stream the final response (after tool rounds, or if we exhausted rounds)
     # Drop oldest tool-round messages if context is too full for a response

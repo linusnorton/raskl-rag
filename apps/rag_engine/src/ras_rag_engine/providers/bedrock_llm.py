@@ -59,7 +59,7 @@ def _convert_messages(messages: list[dict]) -> tuple[list[dict], list[dict]]:
 
         elif role == "assistant":
             content_blocks = []
-            if msg.get("content"):
+            if msg.get("content") and str(msg["content"]).strip():
                 content_blocks.append({"text": msg["content"]})
             for tc in msg.get("tool_calls") or []:
                 fn = tc["function"]
@@ -75,15 +75,17 @@ def _convert_messages(messages: list[dict]) -> tuple[list[dict], list[dict]]:
                 bedrock_messages.append({"role": "assistant", "content": content_blocks})
 
         elif role == "tool":
-            bedrock_messages.append({
-                "role": "user",
-                "content": [{
-                    "toolResult": {
-                        "toolUseId": msg["tool_call_id"],
-                        "content": [{"text": msg["content"]}],
-                    }
-                }],
-            })
+            tool_result = {
+                "toolResult": {
+                    "toolUseId": msg["tool_call_id"],
+                    "content": [{"text": msg["content"]}],
+                }
+            }
+            
+            if bedrock_messages and bedrock_messages[-1]["role"] == "user":
+                bedrock_messages[-1]["content"].append(tool_result)
+            else:
+                bedrock_messages.append({"role": "user", "content": [tool_result]})
 
     return system_parts, bedrock_messages
 
