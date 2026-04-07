@@ -145,6 +145,8 @@ def run_agent_streaming(
         # Handle content as list of text blocks (OpenAI format)
         if isinstance(content, list):
             content = "".join(block.get("text", "") for block in content if isinstance(block, dict))
+        if entry["role"] == "assistant":
+            content = re.sub(r'\[\d+(?:\s*,\s*\d+)*\]', '', content)
         messages.append({"role": entry["role"], "content": content})
     messages.append({"role": "user", "content": user_message})
 
