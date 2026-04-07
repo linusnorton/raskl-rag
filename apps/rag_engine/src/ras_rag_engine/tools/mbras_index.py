@@ -9,7 +9,7 @@ DEFINITION = {
         "description": (
             "Consult the master MBRAS publication index to find article titles, "
             "canonical author names, or subject categories. Use this as a first step "
-            "to find out what an author has written or what articles exist on a topic."
+            "to find out what an author has written or what MBRAS articles exist on a topic."
         ),
         "parameters": {
             "type": "object",
