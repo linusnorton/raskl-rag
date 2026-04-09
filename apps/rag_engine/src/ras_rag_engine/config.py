@@ -20,7 +20,7 @@ class RAGConfig(BaseSettings):
     # Reranker
     rerank_enabled: bool = True
     rerank_candidates: int = 40
-    rerank_relevance_score: float = 0.4
+    rerank_relevance_score: float = 0.3
     rerank_instruction: str = (
         "Identify passages that contain specific names, dates, or events relevant to the query. Ensure that both detailed narratives and concise references are considered equally if they contain factual answers."
     )
