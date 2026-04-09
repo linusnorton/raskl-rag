@@ -3,10 +3,10 @@ import re
 
 # Publication name aliases for ILIKE matching (the publication field is inconsistent)
 _PUBLICATION_PATTERNS = {
-    "JMBRAS": "%Royal Asiatic%",
-    "JMRAS": "%Royal Asiatic%",
-    "JSBRAS": "%Straits Branch%",
-    "MBRAS": "%Royal Asiatic%",
+    "JMBRAS": "%Malay% Branch of the Royal Asiatic Society%",
+    "MBRAS": "%Malay% Branch of the Royal Asiatic Society%",
+    "JSBRAS": "%Straits Branch of the Royal Asiatic Society%",
+    "SB": "%Straits Branch of the Royal Asiatic Society%",
 }
 
 _TYPE_LABELS = {
