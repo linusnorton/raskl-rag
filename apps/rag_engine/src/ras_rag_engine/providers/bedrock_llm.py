@@ -49,43 +49,59 @@ def _convert_messages(messages: list[dict]) -> tuple[list[dict], list[dict]]:
     bedrock_messages: list[dict] = []
 
     for msg in messages:
-        role = msg["role"]
+        role = msg.get("role")
+        content = msg.get("content")
 
         if role == "system":
-            system_parts.append({"text": msg["content"]})
+            if content:
+                system_parts.append({"text": str(content)})
 
         elif role == "user":
-            bedrock_messages.append({"role": "user", "content": [{"text": msg["content"]}]})
+            if content:
+                bedrock_messages.append({"role": "user", "content": [{"text": str(content)}]})
 
         elif role == "assistant":
-            content_blocks = []
-            if msg.get("content") and str(msg["content"]).strip():
-                content_blocks.append({"text": msg["content"]})
+            blocks = []
+            if content and str(content).strip():
+                blocks.append({"text": str(content)})
+            
+            # Handle tool calls
             for tc in msg.get("tool_calls") or []:
                 fn = tc["function"]
                 args = json.loads(fn["arguments"]) if isinstance(fn["arguments"], str) else fn["arguments"]
-                content_blocks.append({
+                blocks.append({
                     "toolUse": {
                         "toolUseId": tc["id"],
                         "name": fn["name"],
                         "input": args,
                     }
                 })
-            if content_blocks:
-                bedrock_messages.append({"role": "assistant", "content": content_blocks})
+            
+            if blocks:
+                bedrock_messages.append({"role": "assistant", "content": blocks})
 
         elif role == "tool":
-            tool_result = {
+            # Bedrock requires tool results to be inside a 'user' role message.
+            # We group consecutive tool results into a single user message.
+            tool_use_id = msg.get("tool_call_id")
+            tool_content = msg.get("content", "")
+            
+            result_block = {
                 "toolResult": {
-                    "toolUseId": msg["tool_call_id"],
-                    "content": [{"text": msg["content"]}],
+                    "toolUseId": tool_use_id,
+                    "content": [{"text": str(tool_content)}],
+                    "status": "success" # Bedrock Converse often prefers an explicit status
                 }
             }
-            
-            if bedrock_messages and bedrock_messages[-1]["role"] == "user":
-                bedrock_messages[-1]["content"].append(tool_result)
+
+            # If the last message in our NEW list is a user message 
+            # AND it contains toolResults, append to it.
+            if (bedrock_messages and 
+                bedrock_messages[-1]["role"] == "user" and 
+                "toolResult" in bedrock_messages[-1]["content"][0]):
+                bedrock_messages[-1]["content"].append(result_block)
             else:
-                bedrock_messages.append({"role": "user", "content": [tool_result]})
+                bedrock_messages.append({"role": "user", "content": [result_block]})
 
     return system_parts, bedrock_messages
 
