@@ -1,15 +1,14 @@
 from __future__ import annotations
 from ..config import RAGConfig
 from ..retriever import RetrievedChunk, retrieve
+from .utils import resolve_author_pattern
 
 DEFINITION = {
     "type": "function",
     "function": {
         "name": "mbras_index",
         "description": (
-            "Consult the master MBRAS publication index to find article titles, "
-            "canonical author names, or subject categories. Use this as a first step "
-            "to find out what an author has written or what MBRAS articles exist on a topic."
+            "Search the MBRAS Master Index (1878-2025) for specific authors, subjects, or keywords. DO NOT use this for general journal listings or metadata queries; use browse_corpus for that."
         ),
         "parameters": {
             "type": "object",
@@ -22,9 +21,12 @@ DEFINITION = {
 }
 
 def execute(args: dict, config: RAGConfig, start_index: int = 1) -> tuple[str, list[RetrievedChunk]]:
-    # This tool is efficient because it targets a single source.
+    query = args["query"]
+    parts = resolve_author_pattern(query)
+    if parts:
+        query = " ".join(parts)
     chunks = retrieve(
-        args["query"],
+        query,
         config,
         source_filename="Index_1878-2025-Je.pdf"
     )
