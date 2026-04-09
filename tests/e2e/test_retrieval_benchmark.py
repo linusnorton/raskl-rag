@@ -185,8 +185,7 @@ def _ask(query_id: str, query: str, expected: str, goal: str, config: ChatConfig
             "rerank_candidates": config.rerank_candidates, 
             "thinking_budget": config.llm_thinking_budget, 
             "top_k": config.retrieval_top_k,
-            "diversity_max_per_doc": config.diversity_max_per_doc,
-            "prompt_caching": config.llm_prompt_caching
+            "diversity_max_per_doc": config.diversity_max_per_doc
         }
     )
 
