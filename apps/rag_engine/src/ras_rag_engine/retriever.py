@@ -70,9 +70,9 @@ WITH vector_results AS (
       AND (%(year_to)s::int IS NULL OR d_v.year <= %(year_to)s)
       AND (%(language)s::text IS NULL OR d_v.language = %(language)s)
       AND (%(publication)s::text IS NULL OR d_v.publication = %(publication)s)
-      AND (%(source_filename)s::text IS NULL OR d_v.source_filename = %(source_filename)s)
+      AND (%(source_filename)s::text IS NULL OR d_v.source_filename ILIKE '%%' || %(source_filename)s)
     ORDER BY c.embedding <=> %(vec)s::vector
-    LIMIT 100
+    LIMIT %(top_k)s
 ),
 text_results AS (
     SELECT c.chunk_id,
@@ -91,8 +91,8 @@ text_results AS (
       AND (%(year_to)s::int IS NULL OR d.year <= %(year_to)s)
       AND (%(language)s::text IS NULL OR d.language = %(language)s)
       AND (%(publication)s::text IS NULL OR d.publication = %(publication)s)
-      AND (%(source_filename)s::text IS NULL OR d.source_filename = %(source_filename)s)
-    LIMIT 100
+      AND (%(source_filename)s::text IS NULL OR d.source_filename ILIKE '%%' || %(source_filename)s)
+    LIMIT %(top_k)s
 ),
 fused AS (
     SELECT v.chunk_id, v.doc_id, v.text, v.start_page, v.end_page, v.section_heading,
@@ -249,8 +249,7 @@ def retrieve_contextual_figures(chunks: list[RetrievedChunk], config: RAGConfig)
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT f.figure_id, f.doc_id, f.page_num, f.caption, f.asset_path, f.thumb_path,
-                       d.source_filename
+                SELECT f.figure_id, f.doc_id, f.page_num, f.caption, f.asset_path, f.thumb_path, d.source_filename
                 FROM figures f
                 JOIN documents d ON f.doc_id = d.doc_id
                 WHERE (f.doc_id, f.page_num) IN (SELECT unnest(%(doc_ids)s::text[]), unnest(%(pages)s::int[]))
