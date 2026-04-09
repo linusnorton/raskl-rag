@@ -35,7 +35,7 @@ def execute(args: dict, config: RAGConfig, start_index: int = 1) -> tuple[str, l
     params = {}
     
     if pub:
-        query += " AND publication = %(pub)s"
+        query += " AND publication ILIKE %(pub)s"
         params["pub"] = pub
     if author:
         name_parts = resolve_author_pattern(author)
@@ -59,7 +59,7 @@ def execute(args: dict, config: RAGConfig, start_index: int = 1) -> tuple[str, l
 
     lines = [f"Found {len(rows)} documents:"]
     for i, row in enumerate(rows, 1):
-        type_label = get_type_label(row[5]).strip(" []") 
+        type_label = get_type_label(row[4]).strip(" []")
         lines.append(f"{i}. {row[0]} by {row[1]} ({row[2]}) [{type_label}]")
         
     return "\n".join(lines) + _BROWSE_NO_CITE_NOTE, []
