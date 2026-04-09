@@ -177,7 +177,17 @@ def _ask(query_id: str, query: str, expected: str, goal: str, config: ChatConfig
         retrieved_chunks=[{"doc": c.source_filename, "score": c.score, "page": c.start_page} for c in all_retrieved_chunks],
         input_tokens_est=metrics_tracker["input_tokens"],  # Pass the tracked values
         output_tokens_est=metrics_tracker["output_tokens"],
-        config=config.model_dump()
+        config={
+            "max_tokens": config.llm_max_tokens,
+            "context_window": config.llm_context_window,
+            "temperature": config.llm_temperature,
+            "rerank": config.rerank_enabled,
+            "rerank_candidates": config.rerank_candidates, 
+            "thinking_budget": config.llm_thinking_budget, 
+            "top_k": config.retrieval_top_k,
+            "diversity_max_per_doc": config.diversity_max_per_doc,
+            "prompt_caching": config.llm_prompt_caching
+        }
     )
 
     # Update score calculation to use the real token sum
