@@ -22,8 +22,9 @@ BATCH_FILE = RESULTS_DIR / f"{BATCH_ID}.jsonl"
 class BenchmarkMetrics:
     test_name: str
     query: str
-    expected_answer: str          # Factual baseline
-    eval_goal: str               # Behavioral baseline
+    expected_answer: str
+    eval_goal: str
+    reasoning: str
     response: str
     status: str
     score: float
@@ -31,7 +32,7 @@ class BenchmarkMetrics:
     input_tokens_est: int
     output_tokens_est: int
     tool_rounds: int
-    tool_calls: list
+    tool_calls: list[dict]
     retrieved_chunks: list
     config: dict
     timestamp: str = datetime.utcnow().isoformat()
@@ -101,15 +102,19 @@ def _ask(query_id: str, query: str, expected: str, goal: str, config: ChatConfig
     from ras_rag_engine.agent import execute_tool_call as real_execute
     def tracked_execute(name, args, cfg, start_index=1):
         t0 = time.perf_counter()
+        result_text, chunks = "(error)", []
         try:
-            return real_execute(name, args, cfg, start_index=start_index)
+            result_text, chunks = real_execute(name, args, cfg, start_index=start_index)
+            return result_text, chunks
         finally:
             duration = time.perf_counter() - t0
             metrics_tracker["tool_calls"].append({
-            "name": name, 
-            "args": args, 
-            "duration": duration
-        })
+                "name": name, 
+                "args": args, 
+                "duration": duration,
+                "output_snippet": result_text[:200] + "..." if len(result_text) > 200 else result_text,
+                "chunks_found": len(chunks)
+            })
 
     # 2. Wrapper to track agent rounds and capture tokens
     from ras_rag_engine.agent import get_llm_provider as real_get_llm
@@ -160,6 +165,8 @@ def _ask(query_id: str, query: str, expected: str, goal: str, config: ChatConfig
         answer = f"Error: {e}"
 
     total_latency = time.perf_counter() - metrics_tracker["start_time"]
+    reasoning_match = re.search(r"<think>(.*?)</think>", answer, flags=re.DOTALL)
+    reasoning = reasoning_match.group(1).strip() if reasoning_match else ""
     clean_answer = re.sub(r"<think>.*?</think>", "", answer, flags=re.DOTALL).strip()
 
     # Log to Batch File
@@ -168,6 +175,7 @@ def _ask(query_id: str, query: str, expected: str, goal: str, config: ChatConfig
         query=query,
         expected_answer=expected,
         eval_goal=goal,
+        reasoning=reasoning,
         response=clean_answer,
         status=metrics_tracker["status"],
         score=0.0,
