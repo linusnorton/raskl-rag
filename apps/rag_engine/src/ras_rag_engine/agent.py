@@ -65,11 +65,12 @@ Follow this hierarchy to find information efficiently:
 """
 
 GUARDRAILS = """\
-## CRITICAL GUARDRAILS (STRICT ADHERENCE REQUIRED)
-1. **CONCISE QUERIES**: All search queries must be **3-5 words**. Use nouns/entities only. NEVER search for questions or full sentences.
+## STRICT GUARDRAILS
+1. **CONCISE QUERIES**: All search queries must be **3-5 words**. Use nouns/entities only..
 2. **ENTITY-FIRST SEARCH**: If searching for a person, the query should just be their name. Do not add descriptive words (e.g., search for "Isabella Bird", NOT "Isabella Bird meeting in Penang").
 3. **NO INVENTIONS**: Only state what the provided sources say. Never "reuse" a source number [N] from the conversation history.
-4. **DEEP READING**: If a chunk mentions a fact but is cut off, you MUST use `document_context` before giving up or performing a new vector search.
+4. **JSON ONLY**: When calling a tool, output ONLY the valid JSON block. No preamble or thinking before the JSON.
+5. **CONTEXT OVER HISTORY**: Use Chat History for flow only. All factual assertions MUST be grounded in the 'CONTEXT' block. If history and context conflict, prioritize CONTEXT.
 """
 
 MAX_TOOL_ROUNDS = 4
@@ -82,7 +83,7 @@ def _build_system_prompt(chunks: list[RetrievedChunk], figures: list[RetrievedFi
     context = format_chunks_for_context(chunks, figures=figures)
     
     # Sandwich the context between the base identity and the strict guardrails
-    return f"{SYSTEM_PROMPT}\n\n---\nCONTEXT:\n{context}\n\n---\n{GUARDRAILS}"
+    return f"{SYSTEM_PROMPT}\n\n---\nCONTEXT:\n{context}"
 
 
 def _compute_max_tokens(
@@ -127,18 +128,23 @@ def run_agent_streaming(
     # Step 2: Build messages
     system_msg = {"role": "system", "content": _build_system_prompt(initial_chunks, contextual_figures)}
     messages: list[dict] = [system_msg]
-    recent_history = history[-6:]
+
+    # Step 2b: Clean history
+    recent_history = history[-4:]
     for entry in recent_history:
         content = entry.get("content") or ""
-        # Handle content as list of text blocks (OpenAI format)
         if isinstance(content, list):
             content = "".join(block.get("text", "") for block in content if isinstance(block, dict))
         if entry["role"] == "assistant":
+            content = content.split("Sources:")[0].split("References:")[0].strip()
             content = re.sub(r'\[\d+(?:\s*,\s*\d+)*\]', '', content)
+            content = content.split("## STRICT GUARDRAILS")[0].strip()
         messages.append({"role": entry["role"], "content": content})
-    messages.append({"role": "user", "content": user_message})
 
-    # Step 2b: Trim context — drop lowest-relevance chunks until prompt fits
+    suffixed_user_message = f"{user_message}\n{GUARDRAILS}"    
+    messages.append({"role": "user", "content": suffixed_user_message})
+
+    # Step 2c: Trim context — drop lowest-relevance chunks until prompt fits
     budget = config.llm_context_window - MIN_OUTPUT_TOKENS - config.llm_thinking_budget - 64
     input_tokens = llm.count_tokens(messages, tools=tool_defs)
     while input_tokens > budget and initial_chunks:
