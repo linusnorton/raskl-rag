@@ -29,32 +29,28 @@ _TOOL_MAP = {
 }
 
 def execute_tool_call(name: str, args_json: str, config, start_index: int = 1):
-    """Dispatches tool calls to the correct module logic."""
-    args = json.loads(args_json) if isinstance(args_json, str) else args_json
+    if isinstance(args_json, str):
+        # Remove ```json ... ``` or just whitespace
+        clean_args = re.sub(r'^```json\s*|\s*```$', '', args_json.strip())
+        try:
+            args = json.loads(clean_args)
+        except json.JSONDecodeError:
+            # Fallback for very messy strings
+            match = re.search(r'\{.*\}', clean_args, re.DOTALL)
+            if match:
+                args = json.loads(match.group())
+            else:
+                raise
+    else:
+        args = args_json
+
     executor = _TOOL_MAP.get(name)
-    
     if not executor:
         raise ValueError(f"Unknown tool: {name}")
         
     return executor(args, config, start_index=start_index)
 
 # 3. Helper for context formatting (Moved from tools.py)
-def format_chunks_for_context(chunks: list[RetrievedChunk]) -> str:
-    """Formats retrieved chunks for inclusion in the system prompt."""
-    if not chunks:
-        return "No documents retrieved yet."
-    
-    lines = []
-    for i, c in enumerate(chunks, 1):
-        header = f"[{i}] SOURCE: {c.source_filename}"
-        if c.title:
-            header += f" | TITLE: {c.title}"
-        if c.author:
-            header += f" | AUTHOR: {c.author}"
-        lines.append(f"{header}\n{c.text}\n---")
-        
-    return "\n\n".join(lines)
-
 def format_chunks_for_context(
     chunks: list[RetrievedChunk],
     start_index: int = 1,
@@ -76,16 +72,20 @@ def format_chunks_for_context(
         display_end = c.end_page
         pages = f"p.{display_start}" if display_start == display_end else f"pp.{display_start}-{display_end}"
         heading = f" — {c.section_heading}" if c.section_heading else ""
-        # Document type label
+        
+        # Document type label using utils.py mapping
         type_label = get_type_label(c.document_type)
-        # Use DB metadata, falling back to parsing the source filename
+        
+        # Extract metadata from filename if missing from DB fields
         if c.source_filename:
             fn_author, fn_year = parse_filename_metadata(c.source_filename)
         else:
             fn_author, fn_year = None, None
+            
         author = c.author or fn_author
         year = fn_year or (str(c.year) if c.year else "")
-        # Build citation-style header: Author (Year), "Title", pages
+        
+        # Build professional citation-style header
         if author and year:
             header = f"[{i}]{type_label} {author} ({year}), \"{source}\", {pages}{heading}"
         elif author:
@@ -97,17 +97,19 @@ def format_chunks_for_context(
 
         chunk_text = f"{header}\n{c.text}"
 
-        # Append contextual figures on the same page(s)
+        # Append contextual figures (images) found on these pages
         seen_figs: set[str] = set()
         for p in range(c.start_page, c.end_page + 1):
             for fig in page_figures.get((c.doc_id, p), []):
                 if fig.figure_id not in seen_figs:
                     seen_figs.add(fig.figure_id)
                     caption = fig.caption or ""
-                    # Skip figures with empty or generic captions
+                    # Skip figures with empty or generic placeholders
                     if not caption or re.match(r"^Figure on p\.\d+$", caption):
                         continue
+                    # Append image with caption as per SYSTEM_PROMPT guidelines
                     chunk_text += f"\n\n![{caption}]({fig.image_url})\n*{caption}*"
 
         parts.append(chunk_text)
+        
     return "\n\n".join(parts)
