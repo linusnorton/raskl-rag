@@ -1,4 +1,4 @@
-FROM ghcr.io/open-webui/open-webui:main
+FROM ghcr.io/open-webui/open-webui:v0.9.4
 
 # Frontend static assets (served by SvelteKit)
 COPY apps/admin/src/ras_admin/static/favicon.ico /app/build/static/favicon.ico
