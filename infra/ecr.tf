@@ -20,7 +20,13 @@ resource "aws_ecr_repository" "docproc" {
   }
 }
 
-# Lifecycle policy: keep only last 5 untagged images
+# Lifecycle policy: keep only the last 5 images per repo.
+#
+# This was previously scoped to tagStatus = "untagged", which never matched
+# anything: CI tags every push with the git SHA, so no image was ever untagged
+# and nothing was ever expired. By Aug 2026 that had accumulated 188 GB across
+# the five repos (~$18/month), 157 GB of it from 36 pre-slimming 4.36 GB
+# docproc images. Scoped to "any" so tagged images age out too.
 
 resource "aws_ecr_lifecycle_policy" "rag_api" {
   repository = aws_ecr_repository.rag_api.name
@@ -28,9 +34,9 @@ resource "aws_ecr_lifecycle_policy" "rag_api" {
   policy = jsonencode({
     rules = [{
       rulePriority = 1
-      description  = "Keep last 5 untagged images"
+      description  = "Keep last 5 images"
       selection = {
-        tagStatus   = "untagged"
+        tagStatus   = "any"
         countType   = "imageCountMoreThan"
         countNumber = 5
       }
@@ -47,9 +53,9 @@ resource "aws_ecr_lifecycle_policy" "docproc" {
   policy = jsonencode({
     rules = [{
       rulePriority = 1
-      description  = "Keep last 5 untagged images"
+      description  = "Keep last 5 images"
       selection = {
-        tagStatus   = "untagged"
+        tagStatus   = "any"
         countType   = "imageCountMoreThan"
         countNumber = 5
       }
@@ -81,9 +87,9 @@ resource "aws_ecr_lifecycle_policy" "admin" {
   policy = jsonencode({
     rules = [{
       rulePriority = 1
-      description  = "Keep last 5 untagged images"
+      description  = "Keep last 5 images"
       selection = {
-        tagStatus   = "untagged"
+        tagStatus   = "any"
         countType   = "imageCountMoreThan"
         countNumber = 5
       }
@@ -110,9 +116,9 @@ resource "aws_ecr_lifecycle_policy" "chunker" {
   policy = jsonencode({
     rules = [{
       rulePriority = 1
-      description  = "Keep last 5 untagged images"
+      description  = "Keep last 5 images"
       selection = {
-        tagStatus   = "untagged"
+        tagStatus   = "any"
         countType   = "imageCountMoreThan"
         countNumber = 5
       }

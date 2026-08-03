@@ -38,10 +38,24 @@ No VPC required. All Lambdas run outside VPC with direct internet access to Neon
 | Resource | Cost/mo |
 |----------|---------|
 | Neon free tier (0.5 GB, 100 compute-hrs) | $0.00 |
-| S3 storage (~10 GB PDFs + JSONL) | ~$0.25 |
-| ECR storage (~3 GB images) | ~$1.00 |
+| S3 storage (15 GB PDFs + JSONL) | ~$0.35 |
+| ECR storage (~8 GB images) | ~$0.80 |
+| Secrets Manager (1 secret) | ~$0.40 |
 | Lambda (idle) | $0.00 |
-| **Total idle** | **~$1.25/mo** |
+| App Runner (paused) | $0.00 |
+| **Total idle** | **~$1.55/mo** |
+
+ECR storage is the item that drifts. The lifecycle policies in `infra/ecr.tf` were
+originally scoped to `tagStatus = "untagged"`, which never matched anything — CI tags
+every push with the git SHA, so no image was ever untagged and nothing expired. By
+Aug 2026 that had grown to 188 GB across the five repos (~$18/mo), 157 GB of it from
+36 pre-slimming 4.36 GB `docproc` images. The policies now use `tagStatus = "any"`
+with `countNumber = 5`, so tagged images age out. If the idle bill climbs again,
+check ECR first.
+
+Note this table covers raskl-rag resources only. The AWS account also carries
+unrelated charges (Route 53 hosted zones, the `nt-backup` bucket) that show up on
+the same bill.
 
 ### Per-use
 
